@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2086 # TMUX_TEST_FLAGS is a flag list; word-splitting is intentional
 # Common bats-core test helpers for cc-harness.
 
 bats_require_minimum_version 1.5.0
@@ -6,6 +7,7 @@ bats_require_minimum_version 1.5.0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CCH_BIN="$REPO_ROOT/bin/cc-harness"
 FIXTURES="$REPO_ROOT/tests/fixtures"
+# shellcheck disable=SC2034 # exported for ad-hoc test runners
 BATS_BIN="$REPO_ROOT/tests/bats/bin/bats"
 
 setup_test_env() {
