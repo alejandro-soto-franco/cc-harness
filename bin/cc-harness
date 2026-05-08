@@ -14,6 +14,8 @@ set -euo pipefail
 # without changing individual call sites.
 tmux() { command tmux ${TMUX_FLAGS:-} "$@"; }
 
+readonly CCH_VERSION="0.1.0"
+
 CCH_HOME="${CCH_HOME:-}"
 CCH_SESSION="${CCH_SESSION:-cc-harness}"
 CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
@@ -948,6 +950,16 @@ _cmd_attach() {
     fi
 }
 
+_cmd_version() {
+    local _self_dir _self_repo _sha=""
+    _self_dir="$(dirname "$CCH_SELF")"
+    _self_repo="$(cd "$_self_dir/.." 2>/dev/null && pwd || echo "")"
+    if command -v git >/dev/null 2>&1 && [[ -d "$_self_repo/.git" ]]; then
+        _sha="$(git -C "$_self_repo" rev-parse --short HEAD 2>/dev/null || echo "")"
+    fi
+    printf "cc-harness %s%s\n" "$CCH_VERSION" "${_sha:+ ($_sha)}"
+}
+
 _help() {
     cat <<EOF
 cc-harness — Claude Code multi-session launcher
@@ -1009,6 +1021,7 @@ case "${1:-attach}" in
     new)          shift; _cmd_new "$@" ;;
     kill)         shift; _cmd_kill "$@" ;;
     -h|--help)    _help ;;
+    version|--version|-V) _cmd_version ;;
     _parse-line)      shift; _lib_parse "$1" ;;
     _validate-label)  shift; _lib_validate_label "$1" ;;
     _validate-tag)    shift; _lib_validate_tag "$1" ;;
