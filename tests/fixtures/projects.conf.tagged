@@ -1,0 +1,3 @@
+alpha = /tmp/alpha | --model opus     #live #trading
+beta  = /tmp/beta                       #math
+gamma = /tmp/gamma | --model haiku    #live
