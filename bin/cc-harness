@@ -45,6 +45,36 @@ _lib_paths() {
     CCH_MIGRATED_MARKER="$CCH_STATE_DIR/.migrated-from-legacy"
 }
 
+# One-time XDG migration. Copies $HOME/cc-harness/projects.conf to
+# $XDG_CONFIG_HOME/cc-harness/, writes a marker so we never run again,
+# and re-points CCH_CONF. Skipped when CCH_HOME is set, when the legacy
+# file is absent, or when the marker already exists.
+_lib_migrate() {
+    local legacy_dir="$HOME/cc-harness"
+    local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}/cc-harness"
+    local xdg_state="${XDG_STATE_HOME:-$HOME/.local/state}/cc-harness"
+    local marker="$xdg_state/.migrated-from-legacy"
+
+    [[ -n "${CCH_HOME:-}" ]] && return 0
+    [[ -f "$legacy_dir/projects.conf" ]] || return 0
+    [[ -f "$marker" ]] && return 0
+    [[ -f "$xdg_config/projects.conf" ]] && return 0
+
+    mkdir -p "$xdg_config" "$xdg_state"
+    cp -p "$legacy_dir/projects.conf" "$xdg_config/projects.conf"
+    : > "$marker"
+
+    {
+        echo "cc-harness: migrated config from ~/cc-harness/ to $xdg_config/"
+        echo "cc-harness: legacy ~/cc-harness/ left in place; remove when ready"
+    } >&2
+
+    CCH_CONF="$xdg_config/projects.conf"
+    CCH_STATE_DIR="$xdg_state"
+    CCH_LOG="$CCH_STATE_DIR/cc-harness.log"
+    CCH_MIGRATED_MARKER="$marker"
+}
+
 _have() { command -v "$1" >/dev/null 2>&1; }
 
 _seed_conf() {
@@ -245,12 +275,17 @@ EOF
 }
 
 _lib_paths
+# Skip migration for read-only debug commands so they don't mutate state.
+case "${1:-}" in _debug-*) ;; *) _lib_migrate ;; esac
 
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
     menu)         _cmd_menu ;;
     new)          _cmd_new ;;
     kill)         _cmd_kill ;;
+    list)
+        grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
+        ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
     -h|--help)    _help ;;
