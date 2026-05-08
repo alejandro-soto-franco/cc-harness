@@ -29,13 +29,15 @@ readonly EXIT_DEPS=5
 
 _die() {
     # _die <exit-code> <subcmd> <message...>
-    local code="$1" subcmd="$2"; shift 2
+    local code="$1" subcmd="$2"
+    shift 2
     printf "cc-harness: %s: %s\n" "$subcmd" "$*" >&2
     exit "$code"
 }
 
 _warn() {
-    local subcmd="$1"; shift
+    local subcmd="$1"
+    shift
     printf "cc-harness: %s: %s\n" "$subcmd" "$*" >&2
 }
 
@@ -85,7 +87,7 @@ _lib_migrate() {
 
     mkdir -p "$xdg_config" "$xdg_state"
     cp -p "$legacy_dir/projects.conf" "$xdg_config/projects.conf"
-    : > "$marker"
+    : >"$marker"
 
     {
         echo "cc-harness: migrated config from ~/cc-harness/ to $xdg_config/"
@@ -139,13 +141,16 @@ _lib_parse() {
 # interpreted as shell commands.
 _lib_assign() {
     local line="$1" key value
-    label=''; path=''; flags=''; tags=''
+    label=''
+    path=''
+    flags=''
+    tags=''
     while IFS='=' read -r key value; do
         case "$key" in
             label) label="$value" ;;
-            path)  path="$value" ;;
+            path) path="$value" ;;
             flags) flags="$value" ;;
-            tags)  tags="$value" ;;
+            tags) tags="$value" ;;
         esac
     done < <(_lib_parse "$line" 2>/dev/null)
     [[ -n "$label" ]]
@@ -153,29 +158,51 @@ _lib_assign() {
 
 _lib_validate_label() {
     local label="$1"
-    [[ -z "$label" ]] && { echo "cc-harness: label cannot be empty" >&2; return 3; }
-    (( ${#label} > 32 )) && { echo "cc-harness: label too long (max 32)" >&2; return 3; }
+    [[ -z "$label" ]] && {
+        echo "cc-harness: label cannot be empty" >&2
+        return 3
+    }
+    ((${#label} > 32)) && {
+        echo "cc-harness: label too long (max 32)" >&2
+        return 3
+    }
     [[ "$label" =~ ^[a-zA-Z0-9_-]+$ ]] || {
-        echo "cc-harness: label must match [a-zA-Z0-9_-]+" >&2; return 3; }
+        echo "cc-harness: label must match [a-zA-Z0-9_-]+" >&2
+        return 3
+    }
     return 0
 }
 
 _lib_validate_tag() {
     local tag="$1"
-    [[ -z "$tag" ]] && { echo "cc-harness: tag cannot be empty" >&2; return 3; }
-    (( ${#tag} > 24 )) && { echo "cc-harness: tag too long (max 24)" >&2; return 3; }
+    [[ -z "$tag" ]] && {
+        echo "cc-harness: tag cannot be empty" >&2
+        return 3
+    }
+    ((${#tag} > 24)) && {
+        echo "cc-harness: tag too long (max 24)" >&2
+        return 3
+    }
     [[ "$tag" =~ ^[a-zA-Z0-9_-]+$ ]] || {
-        echo "cc-harness: tag must match [a-zA-Z0-9_-]+" >&2; return 3; }
+        echo "cc-harness: tag must match [a-zA-Z0-9_-]+" >&2
+        return 3
+    }
     return 0
 }
 
 _lib_resolve_path() {
-    local p="$1"; p="${p/#\~/$HOME}"; printf "%s" "$p"
+    local p="$1"
+    p="${p/#\~/$HOME}"
+    printf "%s" "$p"
 }
 
 _lib_validate_path() {
-    local p; p="$(_lib_resolve_path "$1")"
-    [[ -d "$p" ]] || { echo "cc-harness: not a directory: $p" >&2; return 3; }
+    local p
+    p="$(_lib_resolve_path "$1")"
+    [[ -d "$p" ]] || {
+        echo "cc-harness: not a directory: $p" >&2
+        return 3
+    }
     return 0
 }
 
@@ -184,19 +211,20 @@ _lib_validate_path() {
 _lib_log() {
     [[ "${CCH_VERBOSE:-0}" -eq 1 ]] || return 0
     mkdir -p "$CCH_STATE_DIR"
-    if [[ -f "$CCH_LOG" ]] && (( $(stat -c%s "$CCH_LOG" 2>/dev/null || stat -f%z "$CCH_LOG" 2>/dev/null || echo 0) > 1048576 )); then
+    if [[ -f "$CCH_LOG" ]] && (($(stat -c%s "$CCH_LOG" 2>/dev/null || stat -f%z "$CCH_LOG" 2>/dev/null || echo 0) > 1048576)); then
         for i in 2 1; do
-            [[ -f "$CCH_LOG.$i" ]] && mv "$CCH_LOG.$i" "$CCH_LOG.$((i+1))"
+            [[ -f "$CCH_LOG.$i" ]] && mv "$CCH_LOG.$i" "$CCH_LOG.$((i + 1))"
         done
         mv "$CCH_LOG" "$CCH_LOG.1"
     fi
-    printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$CCH_LOG"
+    printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$CCH_LOG"
 }
 
 # flock-based mutex around config-mutating ops.
 _lib_with_lock() {
     # _lib_with_lock <subcmd> <function-to-run> [args...]
-    local subcmd="$1" fn="$2"; shift 2
+    local subcmd="$1" fn="$2"
+    shift 2
     mkdir -p "$(dirname "$CCH_LOCK")"
     exec 9>"$CCH_LOCK" || _die "$EXIT_GENERIC" "$subcmd" "could not open lockfile $CCH_LOCK"
     if ! flock -n 9; then
@@ -229,9 +257,18 @@ _lib_preflight_tmux() {
 _lib_parse_global_flags() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -v|--verbose) CCH_VERBOSE=1; shift ;;
-            -q|--quiet)   CCH_QUIET=1;   shift ;;
-            --no-color)   export NO_COLOR=1; shift ;;
+            -v | --verbose)
+                CCH_VERBOSE=1
+                shift
+                ;;
+            -q | --quiet)
+                CCH_QUIET=1
+                shift
+                ;;
+            --no-color)
+                export NO_COLOR=1
+                shift
+                ;;
             *) break ;;
         esac
     done
@@ -240,7 +277,7 @@ _lib_parse_global_flags() {
 
 _seed_conf() {
     mkdir -p "$(dirname "$CCH_CONF")"
-    cat > "$CCH_CONF" <<'EOF'
+    cat >"$CCH_CONF" <<'EOF'
 # cc-harness projects — one per line, "label = path"
 # Lines starting with # are comments. ~ expands to $HOME.
 # Order shown in menu = order here. Edit freely; takes effect immediately.
@@ -271,9 +308,10 @@ _pick() {
         local i=0
         for line in "${items[@]}"; do printf "  %2d) %s\n" "$((++i))" "$line" >&2; done
         printf "%s " "$prompt" >&2
-        local n; read -r n </dev/tty
-        if [[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 && n <= ${#items[@]} )); then
-            printf "%s\n" "${items[$((n-1))]}"
+        local n
+        read -r n </dev/tty
+        if [[ "$n" =~ ^[0-9]+$ ]] && ((n >= 1 && n <= ${#items[@]})); then
+            printf "%s\n" "${items[$((n - 1))]}"
         fi
     fi
 }
@@ -309,10 +347,19 @@ _cmd_new() {
     local mode=ask label=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --fresh)  mode=fresh; shift ;;
-            --switch) mode=switch; shift ;;
-            -*)       _die "$EXIT_USAGE" new "unknown flag: $1" ;;
-            *)        label="$1"; shift ;;
+            --fresh)
+                mode=fresh
+                shift
+                ;;
+            --switch)
+                mode=switch
+                shift
+                ;;
+            -*) _die "$EXIT_USAGE" new "unknown flag: $1" ;;
+            *)
+                label="$1"
+                shift
+                ;;
         esac
     done
 
@@ -334,28 +381,28 @@ _cmd_new() {
 
     case "$mode" in
         switch)
-            (( exists )) || _die "$EXIT_TMUX" new "no window for $label"
+            ((exists)) || _die "$EXIT_TMUX" new "no window for $label"
             _tmux select-window -t "$CCH_SESSION:$label"
             ;;
         fresh)
             local n=2
             while _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
-                | grep -qx -- "$label-$n"; do n=$((n+1)); done
+                | grep -qx -- "$label-$n"; do n=$((n + 1)); done
             _spawn "$label-$n" "$path" "$flags"
             ;;
         ask)
-            if (( exists )); then
+            if ((exists)); then
                 if [[ -t 0 ]]; then
                     read -r -p "[s]witch / [f]resh / [c]ancel? " ans
                 else
                     ans=s
                 fi
                 case "${ans:-s}" in
-                    s|S|"") _tmux select-window -t "$CCH_SESSION:$label" ;;
-                    f|F)
+                    s | S | "") _tmux select-window -t "$CCH_SESSION:$label" ;;
+                    f | F)
                         local n=2
                         while _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
-                            | grep -qx -- "$label-$n"; do n=$((n+1)); done
+                            | grep -qx -- "$label-$n"; do n=$((n + 1)); done
                         _spawn "$label-$n" "$path" "$flags"
                         ;;
                     *) return 0 ;;
@@ -371,7 +418,10 @@ _lookup_project() {
     local want="$1" line label path flags tags
     while IFS= read -r line; do
         _lib_assign "$line" || continue
-        [[ "$label" == "$want" ]] && { printf "%s\n" "$line"; return 0; }
+        [[ "$label" == "$want" ]] && {
+            printf "%s\n" "$line"
+            return 0
+        }
     done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
     return 1
 }
@@ -380,11 +430,20 @@ _cmd_kill() {
     local all=0 tag="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --all)      all=1; shift ;;
-            --tag)      tag="${2:-}"; shift 2 ;;
-            --dry-run)  dry=1; shift ;;
+            --all)
+                all=1
+                shift
+                ;;
+            --tag)
+                tag="${2:-}"
+                shift 2
+                ;;
+            --dry-run)
+                dry=1
+                shift
+                ;;
             -*) _die "$EXIT_USAGE" kill "unknown flag: $1" ;;
-            *)  _die "$EXIT_USAGE" kill "unexpected arg: $1" ;;
+            *) _die "$EXIT_USAGE" kill "unexpected arg: $1" ;;
         esac
     done
 
@@ -401,19 +460,26 @@ _cmd_kill() {
             return 0
         }
     fi
-    if (( all )); then
+    if ((all)); then
         while IFS= read -r w; do
-            (( dry )) && { printf "would kill: %s\n" "$w"; continue; }
+            ((dry)) && {
+                printf "would kill: %s\n" "$w"
+                continue
+            }
             _tmux kill-window -t "$CCH_SESSION:$w"
-        done <<< "$windows"
+        done <<<"$windows"
         return 0
     fi
     pick="$(printf "%s\n" "$windows" | _pick 'kill>')" || return 0
     [[ -z "${pick:-}" ]] && return 0
-    if (( dry )); then printf "would kill: %s\n" "$pick"; return 0; fi
+    if ((dry)); then
+        printf "would kill: %s\n" "$pick"
+        return 0
+    fi
     if [[ -t 0 ]]; then
         printf "kill window '%s'? [y/N] " "$pick" >&2
-        local ans; read -r ans </dev/tty
+        local ans
+        read -r ans </dev/tty
         [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
     fi
     _tmux kill-window -t "$CCH_SESSION:$pick"
@@ -423,16 +489,22 @@ _cmd_list() {
     local tag="" show_tags=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --tag)    tag="${2:-}"; shift 2 ;;
-            --tags)   show_tags=1; shift ;;
+            --tag)
+                tag="${2:-}"
+                shift 2
+                ;;
+            --tags)
+                show_tags=1
+                shift
+                ;;
             -*) _die "$EXIT_USAGE" list "unknown flag: $1" ;;
-            *)  _die "$EXIT_USAGE" list "unexpected arg: $1" ;;
+            *) _die "$EXIT_USAGE" list "unexpected arg: $1" ;;
         esac
     done
 
     local line label path flags tags t
 
-    if (( show_tags )); then
+    if ((show_tags)); then
         local all_tags=""
         while IFS= read -r line; do
             _lib_assign "$line" || continue
@@ -447,13 +519,15 @@ _cmd_list() {
     printf "%-16s %-40s %-8s %s\n" LABEL PATH EXISTS TAGS
     while IFS= read -r line; do
         _lib_assign "$line" || continue
-        local p; p="$(_lib_resolve_path "$path")"
-        local ex="X"; [[ -d "$p" ]] && ex="OK"
+        local p
+        p="$(_lib_resolve_path "$path")"
+        local ex="X"
+        [[ -d "$p" ]] && ex="OK"
 
         if [[ -n "$tag" ]]; then
             local match=0
             for t in $tags; do [[ "${t,,}" == "${tag,,}" ]] && match=1; done
-            (( match )) || continue
+            ((match)) || continue
         fi
 
         local ttext=""
@@ -467,14 +541,26 @@ _cmd_add() {
     local -a tags=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --flags)    flags="${2:-}"; shift 2 ;;
-            --tag)      tags+=("${2:-}"); shift 2 ;;
-            --dry-run)  dry=1; shift ;;
-            -*)         _die "$EXIT_USAGE" add "unknown flag: $1" ;;
+            --flags)
+                flags="${2:-}"
+                shift 2
+                ;;
+            --tag)
+                tags+=("${2:-}")
+                shift 2
+                ;;
+            --dry-run)
+                dry=1
+                shift
+                ;;
+            -*) _die "$EXIT_USAGE" add "unknown flag: $1" ;;
             *)
-                if [[ -z "$label" ]]; then label="$1"
-                elif [[ -z "$path" ]]; then path="$1"
-                else _die "$EXIT_USAGE" add "too many args: $1"
+                if [[ -z "$label" ]]; then
+                    label="$1"
+                elif [[ -z "$path" ]]; then
+                    path="$1"
+                else
+                    _die "$EXIT_USAGE" add "too many args: $1"
                 fi
                 shift
                 ;;
@@ -483,7 +569,7 @@ _cmd_add() {
     [[ -n "$label" && -n "$path" ]] \
         || _die "$EXIT_USAGE" add "usage: add <label> <path> [--flags '...'] [--tag t]"
     _lib_validate_label "$label" || exit "$EXIT_CONFIG"
-    _lib_validate_path "$path"   || exit "$EXIT_CONFIG"
+    _lib_validate_path "$path" || exit "$EXIT_CONFIG"
     local t
     for t in "${tags[@]}"; do
         _lib_validate_tag "$t" || exit "$EXIT_CONFIG"
@@ -496,32 +582,48 @@ _cmd_add() {
     [[ -n "$flags" ]] && line+=" | $flags"
     for t in "${tags[@]}"; do line+=" #$t"; done
 
-    if (( dry )); then printf "would append: %s\n" "$line"; return 0; fi
+    if ((dry)); then
+        printf "would append: %s\n" "$line"
+        return 0
+    fi
 
     _lib_with_lock add _cmd_add_write "$line"
 }
 _cmd_add_write() {
-    [[ -f "$CCH_CONF" ]] || { mkdir -p "$(dirname "$CCH_CONF")"; touch "$CCH_CONF"; }
-    printf "%s\n" "$1" >> "$CCH_CONF"
+    [[ -f "$CCH_CONF" ]] || {
+        mkdir -p "$(dirname "$CCH_CONF")"
+        touch "$CCH_CONF"
+    }
+    printf "%s\n" "$1" >>"$CCH_CONF"
 }
 
 _cmd_remove() {
     local label="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --dry-run) dry=1; shift ;;
+            --dry-run)
+                dry=1
+                shift
+                ;;
             -*) _die "$EXIT_USAGE" remove "unknown flag: $1" ;;
-            *) label="$1"; shift ;;
+            *)
+                label="$1"
+                shift
+                ;;
         esac
     done
     [[ -n "$label" ]] || _die "$EXIT_USAGE" remove "usage: remove <label>"
     _lookup_project "$label" >/dev/null 2>&1 \
         || _die "$EXIT_CONFIG" remove "no such label: $label"
-    if (( dry )); then printf "would remove: %s\n" "$label"; return 0; fi
+    if ((dry)); then
+        printf "would remove: %s\n" "$label"
+        return 0
+    fi
     _lib_with_lock remove _cmd_remove_write "$label"
 }
 _cmd_remove_write() {
-    local want="$1" tmp; tmp="$(mktemp)"
+    local want="$1" tmp
+    tmp="$(mktemp)"
     awk -v w="$want" '
         /^[ \t]*(#|$)/ { print; next }
         {
@@ -530,7 +632,7 @@ _cmd_remove_write() {
             if (a[1] == w) next
             print
         }
-    ' "$CCH_CONF" > "$tmp"
+    ' "$CCH_CONF" >"$tmp"
     mv "$tmp" "$CCH_CONF"
 }
 
@@ -538,12 +640,18 @@ _cmd_rename() {
     local old="" new="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --dry-run) dry=1; shift ;;
+            --dry-run)
+                dry=1
+                shift
+                ;;
             -*) _die "$EXIT_USAGE" rename "unknown flag: $1" ;;
             *)
-                if [[ -z "$old" ]]; then old="$1"
-                elif [[ -z "$new" ]]; then new="$1"
-                else _die "$EXIT_USAGE" rename "too many args: $1"
+                if [[ -z "$old" ]]; then
+                    old="$1"
+                elif [[ -z "$new" ]]; then
+                    new="$1"
+                else
+                    _die "$EXIT_USAGE" rename "too many args: $1"
                 fi
                 shift
                 ;;
@@ -556,7 +664,10 @@ _cmd_rename() {
         || _die "$EXIT_CONFIG" rename "no such label: $old"
     _lookup_project "$new" >/dev/null 2>&1 \
         && _die "$EXIT_CONFIG" rename "target label already exists: $new"
-    if (( dry )); then printf "would rename: %s -> %s\n" "$old" "$new"; return 0; fi
+    if ((dry)); then
+        printf "would rename: %s -> %s\n" "$old" "$new"
+        return 0
+    fi
 
     _lib_with_lock rename _cmd_rename_write "$old" "$new"
     if _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$old"; then
@@ -564,7 +675,8 @@ _cmd_rename() {
     fi
 }
 _cmd_rename_write() {
-    local old="$1" new="$2" tmp; tmp="$(mktemp)"
+    local old="$1" new="$2" tmp
+    tmp="$(mktemp)"
     awk -v o="$old" -v n="$new" '
         /^[ \t]*(#|$)/ { print; next }
         {
@@ -575,7 +687,7 @@ _cmd_rename_write() {
                 printf "%s =%s\n", n, rest
             } else print
         }
-    ' "$CCH_CONF" > "$tmp"
+    ' "$CCH_CONF" >"$tmp"
     mv "$tmp" "$CCH_CONF"
 }
 
@@ -584,10 +696,15 @@ _cmd_tag() {
     local -a ops=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            +*|-*) ops+=("$1"); shift ;;
+            +* | -*)
+                ops+=("$1")
+                shift
+                ;;
             *)
-                if [[ -z "$target" ]]; then target="$1"
-                else _die "$EXIT_USAGE" tag "too many args: $1"
+                if [[ -z "$target" ]]; then
+                    target="$1"
+                else
+                    _die "$EXIT_USAGE" tag "too many args: $1"
                 fi
                 shift
                 ;;
@@ -605,33 +722,43 @@ _cmd_tag() {
     _lib_with_lock tag _cmd_tag_write "$target" "${ops[@]}"
 }
 _cmd_tag_write() {
-    local target="$1"; shift
+    local target="$1"
+    shift
     local -a ops=("$@")
-    local tmp; tmp="$(mktemp)"
+    local tmp
+    tmp="$(mktemp)"
     local line label path flags tags op sign tag t out
     while IFS= read -r line; do
         if [[ "$line" =~ ^[[:space:]]*(#|$) ]]; then
-            printf "%s\n" "$line" >> "$tmp"; continue
+            printf "%s\n" "$line" >>"$tmp"
+            continue
         fi
         if ! _lib_assign "$line"; then
-            printf "%s\n" "$line" >> "$tmp"; continue
+            printf "%s\n" "$line" >>"$tmp"
+            continue
         fi
         if [[ "$label" != "$target" ]]; then
-            printf "%s\n" "$line" >> "$tmp"; continue
+            printf "%s\n" "$line" >>"$tmp"
+            continue
         fi
         for op in "${ops[@]}"; do
-            sign="${op:0:1}"; tag="${op:1}"
+            sign="${op:0:1}"
+            tag="${op:1}"
             case "$sign" in
                 +) [[ " $tags " == *" $tag "* ]] || tags="$tags $tag" ;;
-                -) tags=" $tags "; tags="${tags// $tag / }" ;;
+                -)
+                    tags=" $tags "
+                    tags="${tags// $tag / }"
+                    ;;
             esac
-            tags="${tags## }"; tags="${tags%% }"
+            tags="${tags## }"
+            tags="${tags%% }"
         done
         out="$label = $path"
         [[ -n "$flags" ]] && out+=" | $flags"
         for t in $tags; do out+=" #$t"; done
-        printf "%s\n" "$out" >> "$tmp"
-    done < "$CCH_CONF"
+        printf "%s\n" "$out" >>"$tmp"
+    done <"$CCH_CONF"
     mv "$tmp" "$CCH_CONF"
 }
 
@@ -643,7 +770,8 @@ _cmd_untag() {
     _lib_with_lock untag _cmd_untag_write "$label"
 }
 _cmd_untag_write() {
-    local label="$1" tmp; tmp="$(mktemp)"
+    local label="$1" tmp
+    tmp="$(mktemp)"
     awk -v w="$label" '
         /^[ \t]*(#|$)/ { print; next }
         {
@@ -653,7 +781,7 @@ _cmd_untag_write() {
             if (l == w) sub(/[[:space:]]+#.*$/, "", line)
             print line
         }
-    ' "$CCH_CONF" > "$tmp"
+    ' "$CCH_CONF" >"$tmp"
     mv "$tmp" "$CCH_CONF"
 }
 
@@ -661,30 +789,37 @@ _cmd_status() {
     local json=0 tag=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --json) json=1; shift ;;
-            --tag)  tag="${2:-}"; shift 2 ;;
+            --json)
+                json=1
+                shift
+                ;;
+            --tag)
+                tag="${2:-}"
+                shift 2
+                ;;
             -*) _die "$EXIT_USAGE" status "unknown flag: $1" ;;
-            *)  _die "$EXIT_USAGE" status "unexpected arg: $1" ;;
+            *) _die "$EXIT_USAGE" status "unexpected arg: $1" ;;
         esac
     done
     local version="0.1.0"
-    local claude_path; claude_path="$(command -v "$CCH_CLAUDE" 2>/dev/null || echo '(missing)')"
+    local claude_path
+    claude_path="$(command -v "$CCH_CLAUDE" 2>/dev/null || echo '(missing)')"
     local claude_ver=""
     [[ -x "$claude_path" ]] && claude_ver="$("$claude_path" --version 2>/dev/null | head -1)"
     local windows
     windows="$(_tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_current_path}	#{pane_pid}' 2>/dev/null || true)"
 
-    if (( json )); then
+    if ((json)); then
         printf '{"version":"%s","session":"%s","claude":"%s","windows":[' \
             "$version" "$CCH_SESSION" "$claude_path"
         local first=1 idx wname cwd pid
         while IFS=$'\t' read -r idx wname cwd pid; do
             [[ -z "$wname" ]] && continue
-            (( first )) || printf ","
+            ((first)) || printf ","
             first=0
             printf '{"index":%s,"name":"%s","cwd":"%s","pid":%s}' \
                 "$idx" "$wname" "$cwd" "$pid"
-        done <<< "$windows"
+        done <<<"$windows"
         printf ']}\n'
         return 0
     fi
@@ -698,7 +833,7 @@ _cmd_status() {
     while IFS=$'\t' read -r idx wname cwd pid; do
         [[ -z "$wname" ]] && continue
         printf "  [%s] %-16s pid=%s  cwd=%s\n" "$idx" "$wname" "$pid" "$cwd"
-    done <<< "$windows"
+    done <<<"$windows"
 }
 
 _cmd_doctor() {
@@ -713,15 +848,15 @@ _cmd_doctor() {
         fi
     }
     printf "cc-harness doctor:\n"
-    _check "tmux installed"             "command -v tmux"
-    _check "tmux >= 3.0"                "tmux -V | awk '{print \$2}' | tr -d '[:alpha:]' | awk '{exit !(\$1+0 >= 3.0)}'"
-    _check "claude binary on PATH"      "command -v $CCH_CLAUDE"
-    _check "projects.conf parseable"    "[[ -f $CCH_CONF ]] && _projects >/dev/null"
-    _check "every project path exists"  "_doctor_paths"
-    _check "TERM supports 256color"     "[[ \$TERM == *256* ]] || tput colors | awk '{exit !(\$1>=256)}'"
-    _check "fzf available (optional)"   "command -v fzf"
-    if [[ -f "$HOME/cc-harness/projects.conf" \
-          && "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
+    _check "tmux installed" "command -v tmux"
+    _check "tmux >= 3.0" "tmux -V | awk '{print \$2}' | tr -d '[:alpha:]' | awk '{exit !(\$1+0 >= 3.0)}'"
+    _check "claude binary on PATH" "command -v $CCH_CLAUDE"
+    _check "projects.conf parseable" "[[ -f $CCH_CONF ]] && _projects >/dev/null"
+    _check "every project path exists" "_doctor_paths"
+    _check "TERM supports 256color" "[[ \$TERM == *256* ]] || tput colors | awk '{exit !(\$1>=256)}'"
+    _check "fzf available (optional)" "command -v fzf"
+    if [[ -f "$HOME/cc-harness/projects.conf" &&
+        "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
         printf "  !  legacy ~/cc-harness/projects.conf still present (safe to remove)\n"
     fi
     return "$fail"
@@ -806,13 +941,17 @@ EOF
         action="$(printf "new\nkill\nedit projects.conf\ndetach\nquit (kill harness)\n" \
             | _pick 'cc-harness>')" || action="detach"
         case "$action" in
-            new)                 _cmd_new ;;
-            kill)                _cmd_kill ;;
+            new) _cmd_new ;;
+            kill) _cmd_kill ;;
             "edit projects.conf") "${EDITOR:-vi}" "$CCH_CONF" ;;
-            detach)              _tmux detach-client; return ;;
+            detach)
+                _tmux detach-client
+                return
+                ;;
             "quit (kill harness)")
                 printf "kill the entire harness session and all running claudes? [y/N] " >&2
-                local ans; read -r ans </dev/tty
+                local ans
+                read -r ans </dev/tty
                 if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
                     _tmux kill-session -t "$CCH_SESSION"
                     exit 0
@@ -830,7 +969,7 @@ _cmd_attach() {
         _tmux new-session -d -s "$CCH_SESSION" -n menu \
             "exec '$CCH_SELF' menu"
         _tmux set-option -t "$CCH_SESSION" status-style "bg=colour236,fg=colour250"
-        _tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
+        _tmux set-option -t "$CCH_SESSION" status-left "#[bold] cc-harness #[default]│ "
         _tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
         _tmux set-option -t "$CCH_SESSION" mouse on
         # Keep windows around when claude exits so users can read tracebacks
@@ -849,7 +988,7 @@ _cmd_attach() {
             _tmux new-window -t "$CCH_SESSION:0" -n menu \
                 "exec '$CCH_SELF' menu" 2>/dev/null \
                 || _tmux new-window -t "$CCH_SESSION:" -n menu \
-                       "exec '$CCH_SELF' menu"
+                    "exec '$CCH_SELF' menu"
         fi
         # Stale-window detection: rename windows whose pane PID is dead.
         while IFS=$'\t' read -r idx wname pid; do
@@ -882,26 +1021,29 @@ _cmd_attach() {
 _help() {
     local sub="${1:-}"
     case "$sub" in
-        ""|--help|-h) _help_main ;;
-        new)        _help_new ;;
-        kill)       _help_kill ;;
-        list)       _help_list ;;
-        add)        _help_add ;;
-        remove)     _help_remove ;;
-        rename)     _help_rename ;;
-        tag|untag)  _help_tag ;;
-        status)     _help_status ;;
-        doctor)     _help_doctor ;;
-        logs)       _help_logs ;;
-        which)      _help_which ;;
-        attach)     _help_attach ;;
+        "" | --help | -h) _help_main ;;
+        new) _help_new ;;
+        kill) _help_kill ;;
+        list) _help_list ;;
+        add) _help_add ;;
+        remove) _help_remove ;;
+        rename) _help_rename ;;
+        tag | untag) _help_tag ;;
+        status) _help_status ;;
+        doctor) _help_doctor ;;
+        logs) _help_logs ;;
+        which) _help_which ;;
+        attach) _help_attach ;;
         completion) _help_completion ;;
-        *) printf "cc-harness: no help for: %s\n" "$sub" >&2; return 2 ;;
+        *)
+            printf "cc-harness: no help for: %s\n" "$sub" >&2
+            return 2
+            ;;
     esac
 }
 
 _help_main() {
-cat <<EOF
+    cat <<EOF
 cc-harness $CCH_VERSION — Claude Code multi-session launcher
 
 Usage: cc-harness [-v|-q] [--no-color] <command> [args]
@@ -930,7 +1072,7 @@ EOF
 }
 
 _help_new() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness new [<label>] [--fresh | --switch]
 
 Spawn a new claude session, or switch to an existing one.
@@ -944,7 +1086,7 @@ EOF
 }
 
 _help_attach() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness attach [<label>]
 
 Attach to the harness session. With <label>, open an isolated client view
@@ -958,7 +1100,7 @@ EOF
 }
 
 _help_kill() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness kill [--all] [--tag TAG] [--dry-run]
 
 Pick a window to kill, or kill in bulk by tag.
@@ -971,7 +1113,7 @@ EOF
 }
 
 _help_list() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness list [--tag TAG] [--tags]
 
 Print configured projects, optionally filtered by tag.
@@ -985,7 +1127,7 @@ EOF
 }
 
 _help_add() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness add <label> <path> [--flags 'STR'] [--tag TAG]... [--dry-run]
 
 Append a row to projects.conf.
@@ -997,7 +1139,7 @@ EOF
 }
 
 _help_remove() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness remove <label> [--dry-run]
 
 Remove the row for <label> from projects.conf.
@@ -1009,7 +1151,7 @@ EOF
 }
 
 _help_rename() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness rename <old> <new>
 
 Rename the projects.conf entry, and rename the live tmux window if present.
@@ -1020,7 +1162,7 @@ EOF
 }
 
 _help_tag() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness tag <label> +TAG -TAG ...
 cc-harness untag <label>
 
@@ -1033,7 +1175,7 @@ EOF
 }
 
 _help_status() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness status [--json] [--tag TAG]
 
 Print harness version, claude binary, host uptime, and active sessions.
@@ -1046,7 +1188,7 @@ EOF
 }
 
 _help_doctor() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness doctor
 
 Run environment checks: tmux installed and >= 3.0, claude on PATH,
@@ -1059,7 +1201,7 @@ EOF
 }
 
 _help_logs() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness logs <label>
 
 Print the last 3000 lines from the named session's pane to stdout.
@@ -1071,7 +1213,7 @@ EOF
 }
 
 _help_which() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness which <label>
 
 Print the resolved (~ expanded) filesystem path for a project label.
@@ -1082,7 +1224,7 @@ EOF
 }
 
 _help_completion() {
-cat <<'EOF'
+    cat <<'EOF'
 cc-harness completion <bash|zsh|fish>
 
 Emit a shell completion script to stdout.
@@ -1097,14 +1239,14 @@ EOF
 _cmd_completion() {
     case "${1:-}" in
         bash) _emit_bash_completion ;;
-        zsh)  _emit_zsh_completion ;;
+        zsh) _emit_zsh_completion ;;
         fish) _emit_fish_completion ;;
         *) _die "$EXIT_USAGE" completion "usage: completion <bash|zsh|fish>" ;;
     esac
 }
 
 _emit_bash_completion() {
-cat <<'BASHEOF'
+    cat <<'BASHEOF'
 # cc-harness bash completion
 _cc_harness() {
     local cur prev cmds
@@ -1137,7 +1279,7 @@ BASHEOF
 }
 
 _emit_zsh_completion() {
-cat <<'ZSHEOF'
+    cat <<'ZSHEOF'
 #compdef cc-harness
 _cc_harness() {
     local -a cmds
@@ -1176,7 +1318,7 @@ ZSHEOF
 }
 
 _emit_fish_completion() {
-cat <<'FISHEOF'
+    cat <<'FISHEOF'
 # cc-harness fish completion
 function __cch_labels
     cc-harness list 2>/dev/null | awk 'NR>1 {print $1}'
@@ -1205,7 +1347,7 @@ cmd="${1:-attach}"
 # Per-subcommand --help routing: any registered subcommand followed by
 # --help / -h prints its dedicated page instead of running the command.
 case "$cmd" in
-    attach|new|kill|list|add|remove|rename|tag|untag|status|doctor|logs|which|completion)
+    attach | new | kill | list | add | remove | rename | tag | untag | status | doctor | logs | which | completion)
         if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
             _help "$cmd"
             exit 0
@@ -1214,22 +1356,22 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-    attach|"")    _cmd_attach "$@" ;;
-    menu)         _cmd_menu "$@" ;;
-    new)          _cmd_new "$@" ;;
-    kill)         _cmd_kill "$@" ;;
-    list)         _cmd_list "$@" ;;
-    add)          _cmd_add "$@" ;;
-    remove)       _cmd_remove "$@" ;;
-    rename)       _cmd_rename "$@" ;;
-    tag)          _cmd_tag "$@" ;;
-    untag)        _cmd_untag "$@" ;;
-    status)       _cmd_status "$@" ;;
-    doctor)       _cmd_doctor "$@" ;;
-    logs)         _cmd_logs "$@" ;;
-    which)        _cmd_which "$@" ;;
-    completion)   _cmd_completion "$@" ;;
-    version|--version|-V)
+    attach | "") _cmd_attach "$@" ;;
+    menu) _cmd_menu "$@" ;;
+    new) _cmd_new "$@" ;;
+    kill) _cmd_kill "$@" ;;
+    list) _cmd_list "$@" ;;
+    add) _cmd_add "$@" ;;
+    remove) _cmd_remove "$@" ;;
+    rename) _cmd_rename "$@" ;;
+    tag) _cmd_tag "$@" ;;
+    untag) _cmd_untag "$@" ;;
+    status) _cmd_status "$@" ;;
+    doctor) _cmd_doctor "$@" ;;
+    logs) _cmd_logs "$@" ;;
+    which) _cmd_which "$@" ;;
+    completion) _cmd_completion "$@" ;;
+    version | --version | -V)
         sha=""
         if command -v git >/dev/null 2>&1; then
             sha="$(git -C "$(dirname "$CCH_SELF")/.." rev-parse --short HEAD 2>/dev/null || true)"
@@ -1237,14 +1379,14 @@ case "$cmd" in
         printf "cc-harness %s%s\n" "$CCH_VERSION" "${sha:+ ($sha)}"
         ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
-                      "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
-    _parse-line)       _lib_parse "${1:-}" ;;
-    _validate-label)   _lib_validate_label "${1:-}" ;;
-    _validate-tag)     _lib_validate_tag "${1:-}" ;;
-    _validate-path)    _lib_validate_path "${1:-}" ;;
+        "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
+    _parse-line) _lib_parse "${1:-}" ;;
+    _validate-label) _lib_validate_label "${1:-}" ;;
+    _validate-tag) _lib_validate_tag "${1:-}" ;;
+    _validate-path) _lib_validate_path "${1:-}" ;;
     _preflight-claude) _lib_preflight_claude ;;
-    _preflight-tmux)   _lib_preflight_tmux ;;
-    -h|--help)    _help ;;
+    _preflight-tmux) _lib_preflight_tmux ;;
+    -h | --help) _help ;;
     *)
         printf "cc-harness: unknown command: %s\n" "$cmd" >&2
         _help >&2

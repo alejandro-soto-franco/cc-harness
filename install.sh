@@ -20,20 +20,32 @@ UNINSTALL=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --prefix)    PREFIX="$2"; shift 2 ;;
-        --user)      USER_INSTALL=1; shift ;;
-        --uninstall) UNINSTALL=1; shift ;;
-        --help|-h)
+        --prefix)
+            PREFIX="$2"
+            shift 2
+            ;;
+        --user)
+            USER_INSTALL=1
+            shift
+            ;;
+        --uninstall)
+            UNINSTALL=1
+            shift
+            ;;
+        --help | -h)
             sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
-        *) printf "install.sh: unknown flag: %s\n" "$1" >&2; exit 2 ;;
+        *)
+            printf "install.sh: unknown flag: %s\n" "$1" >&2
+            exit 2
+            ;;
     esac
 done
 
 # Pick a prefix the user can actually write to.
 if [[ -z "$PREFIX" ]]; then
-    if (( USER_INSTALL )); then
+    if ((USER_INSTALL)); then
         PREFIX="$HOME/.local"
     elif [[ -w /usr/local ]]; then
         PREFIX="/usr/local"
@@ -43,15 +55,15 @@ if [[ -z "$PREFIX" ]]; then
     fi
 fi
 
-if (( UNINSTALL )); then
+if ((UNINSTALL)); then
     if [[ -x "$PREFIX/bin/$NAME" ]]; then
         exec "$PREFIX/bin/$NAME" uninstall --prefix "$PREFIX"
     fi
     rm -f "$PREFIX/bin/$NAME" \
-          "$PREFIX/share/man/man1/$NAME.1" \
-          "$PREFIX/share/bash-completion/completions/$NAME" \
-          "$PREFIX/share/zsh/site-functions/_$NAME" \
-          "$PREFIX/share/fish/vendor_completions.d/$NAME.fish"
+        "$PREFIX/share/man/man1/$NAME.1" \
+        "$PREFIX/share/bash-completion/completions/$NAME" \
+        "$PREFIX/share/zsh/site-functions/_$NAME" \
+        "$PREFIX/share/fish/vendor_completions.d/$NAME.fish"
     echo "install.sh: removed $NAME from $PREFIX"
     exit 0
 fi
@@ -60,7 +72,10 @@ fi
 if [[ -z "$VERSION" ]]; then
     VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
         | awk -F'"' '/"tag_name":/ {print $4; exit}')"
-    [[ -n "$VERSION" ]] || { echo "install.sh: could not resolve latest version" >&2; exit 1; }
+    [[ -n "$VERSION" ]] || {
+        echo "install.sh: could not resolve latest version" >&2
+        exit 1
+    }
 fi
 
 VER_NO_V="${VERSION#v}"
@@ -72,11 +87,11 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "install.sh: downloading $TARBALL ..."
-curl -fsSL --retry 3 -o "$TMP/$TARBALL"      "$URL"
+curl -fsSL --retry 3 -o "$TMP/$TARBALL" "$URL"
 curl -fsSL --retry 3 -o "$TMP/$TARBALL.sha256" "$SUMS_URL"
 
 echo "install.sh: verifying sha256 ..."
-( cd "$TMP" && sha256sum -c "$TARBALL.sha256" )
+(cd "$TMP" && sha256sum -c "$TARBALL.sha256")
 
 echo "install.sh: extracting ..."
 tar -xzf "$TMP/$TARBALL" -C "$TMP"
