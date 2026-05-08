@@ -291,7 +291,7 @@ _lookup_project() {
 }
 
 _cmd_new() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help new; return 0; }
     local mode=ask label=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -354,7 +354,7 @@ _cmd_new() {
 }
 
 _cmd_kill() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help kill 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help kill; return 0; }
     local all=0 tag="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -409,7 +409,7 @@ _filter_windows_by_tag() {
 }
 
 _cmd_list() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help list 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help list; return 0; }
     local tag="" show_tags=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -455,7 +455,7 @@ _cmd_list() {
 }
 
 _cmd_add() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help add 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help add; return 0; }
     local label="" path="" flags="" dry=0
     local -a tags=()
     while [[ $# -gt 0 ]]; do
@@ -498,7 +498,7 @@ _cmd_add_write() {
 }
 
 _cmd_remove() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help remove 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help remove; return 0; }
     local label="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -528,7 +528,7 @@ _cmd_remove_write() {
 }
 
 _cmd_rename() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help rename 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help rename; return 0; }
     local old="" new="" dry=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -574,7 +574,7 @@ _cmd_rename_write() {
 }
 
 _cmd_tag() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help tag 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help tag; return 0; }
     local label=""; local -a ops=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -626,7 +626,7 @@ _cmd_tag_write() {
 }
 
 _cmd_untag() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help tag 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help tag; return 0; }
     local label="${1:-}"
     [[ -n "$label" ]] || _die "$EXIT_USAGE" untag "usage: untag <label>"
     _lookup_project "$label" >/dev/null 2>&1 \
@@ -649,7 +649,7 @@ _cmd_untag_write() {
 }
 
 _cmd_status() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help status 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help status; return 0; }
     local json=0 tag=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -694,7 +694,7 @@ _cmd_status() {
 }
 
 _cmd_completion() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help completion 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help completion; return 0; }
     case "${1:-}" in
         bash) _emit_bash_completion ;;
         zsh)  _emit_zsh_completion ;;
@@ -792,7 +792,7 @@ FISHEOF
 }
 
 _cmd_which() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help which 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help which; return 0; }
     local label="${1:-}"
     [[ -n "$label" ]] || _die "$EXIT_USAGE" which "usage: which <label>"
     local line; line="$(_lookup_project "$label")" \
@@ -803,7 +803,7 @@ _cmd_which() {
 }
 
 _cmd_logs() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help logs 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help logs; return 0; }
     local label="${1:-}"
     [[ -n "$label" ]] || _die "$EXIT_USAGE" logs "usage: logs <label>"
     tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
@@ -813,7 +813,7 @@ _cmd_logs() {
 }
 
 _cmd_doctor() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help doctor 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help doctor; return 0; }
     local fail=0
     _check() {
         local name="$1" cmd="$2"
@@ -900,7 +900,7 @@ EOF
 }
 
 _cmd_attach() {
-    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help attach 2>/dev/null || _help; return 0; }
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help attach; return 0; }
     local label="${1:-}"
 
     [[ -f "$CCH_CONF" ]] || _seed_conf
@@ -961,32 +961,219 @@ _cmd_version() {
 }
 
 _help() {
-    cat <<EOF
-cc-harness — Claude Code multi-session launcher
+    local sub="${1:-}"
+    case "$sub" in
+        ""|--help|-h) _help_main ;;
+        new)        _help_new ;;
+        kill)       _help_kill ;;
+        list)       _help_list ;;
+        add)        _help_add ;;
+        remove)     _help_remove ;;
+        rename)     _help_rename ;;
+        tag|untag)  _help_tag ;;
+        status)     _help_status ;;
+        doctor)     _help_doctor ;;
+        logs)       _help_logs ;;
+        which)      _help_which ;;
+        attach)     _help_attach ;;
+        completion) _help_completion ;;
+        *) printf "cc-harness: no help for: %s\n" "$sub" >&2; return 2 ;;
+    esac
+}
 
-Usage: cc-harness [command]
-  (no args)    launch / attach the harness tmux session
-  new          spawn a new claude session (project picker)
-  kill         kill an existing claude session
-  menu         (internal) run the menu loop in window 0
-  -h, --help   show this help
+_help_main() {
+cat <<EOF
+cc-harness $CCH_VERSION — Claude Code multi-session launcher
 
-Config:
-  $CCH_CONF        edit to add or remove projects
-Env:
-  CCH_FLAGS        flags passed to claude on every spawn
-                   (default: --dangerously-skip-permissions)
-  CCH_HOME         override harness dir (default: ~/cc-harness)
-  CCH_SESSION      tmux session name (default: cc-harness)
-  CCH_CLAUDE       path to the claude binary (default: claude on PATH)
+Usage: cc-harness [-v|-q] [--no-color] <command> [args]
 
-Inside the harness (Ctrl-b is the tmux prefix):
-  prefix + 0       menu window
-  prefix + 1..9    session N
-  prefix + w       interactive window list
-  prefix + d       detach
-  prefix + ,       rename current window
-  prefix + &       kill current window (close that claude session)
+Commands:
+  attach [<label>]         attach (or attach to a single session view)
+  new [<label>] [--fresh|--switch]   spawn or switch to a session
+  kill [--all] [--tag T] [--dry-run] kill a session
+  list [--tag T] [--tags]  show projects (or unique tags)
+  add <label> <path> [--flags '...'] [--tag t]   add a project
+  remove <label> [--dry-run]
+  rename <old> <new>
+  tag <label> +foo -bar
+  untag <label>
+  status [--json] [--tag T]
+  doctor                   run environment checks
+  logs <label>             capture last 3000 lines from a session pane
+  which <label>            print resolved path
+  completion <shell>       emit completion script
+  version | --version
+  <subcmd> --help          per-subcommand help
+
+Configuration: \$XDG_CONFIG_HOME/cc-harness/projects.conf
+Environment:   CCH_HOME, CCH_FLAGS, CCH_CLAUDE, CCH_SESSION, NO_COLOR
+Docs:          man cc-harness   |   https://github.com/alejandro-soto-franco/cc-harness
+EOF
+}
+
+_help_new() {
+cat <<'EOF'
+cc-harness new [<label>] [--fresh | --switch]
+
+Spawn a new claude session, or switch to an existing one.
+
+Examples:
+  cc-harness new                  # interactive picker
+  cc-harness new polybius         # spawn or switch
+  cc-harness new polybius --fresh # always spawn a sibling (polybius-2, ...)
+  cc-harness new polybius --switch  # only switch; error if no window
+EOF
+}
+
+_help_attach() {
+cat <<'EOF'
+cc-harness attach [<label>]
+
+Attach to the harness session. With <label>, open an isolated client view
+focused on that session via a grouped tmux session (independent window
+pointer per terminal).
+
+Examples:
+  cc-harness attach
+  cc-harness attach polybius     # this terminal stays on polybius regardless
+                                 # of what other terminals do
+EOF
+}
+
+_help_kill() {
+cat <<'EOF'
+cc-harness kill [--all] [--tag TAG] [--dry-run]
+
+Pick a window to kill, or kill in bulk by tag.
+
+Examples:
+  cc-harness kill                # interactive picker
+  cc-harness kill --tag live --dry-run
+  cc-harness kill --all
+EOF
+}
+
+_help_list() {
+cat <<'EOF'
+cc-harness list [--tag TAG] [--tags]
+
+Print configured projects, optionally filtered by tag.
+--tags prints unique tags with counts instead of the project table.
+
+Examples:
+  cc-harness list
+  cc-harness list --tag math
+  cc-harness list --tags
+EOF
+}
+
+_help_add() {
+cat <<'EOF'
+cc-harness add <label> <path> [--flags 'STR'] [--tag TAG]... [--dry-run]
+
+Append a row to projects.conf.
+
+Examples:
+  cc-harness add polybius ~/Polybius
+  cc-harness add polybius ~/Polybius --flags '--model opus' --tag live --tag rust
+EOF
+}
+
+_help_remove() {
+cat <<'EOF'
+cc-harness remove <label> [--dry-run]
+
+Remove the row for <label> from projects.conf.
+
+Examples:
+  cc-harness remove polybius
+  cc-harness remove polybius --dry-run
+EOF
+}
+
+_help_rename() {
+cat <<'EOF'
+cc-harness rename <old> <new>
+
+Rename the projects.conf entry, and rename the live tmux window if present.
+
+Examples:
+  cc-harness rename polybius poly
+EOF
+}
+
+_help_tag() {
+cat <<'EOF'
+cc-harness tag <label> +TAG -TAG ...
+cc-harness untag <label>
+
+Add or remove tags on a project. untag strips all tags from a row.
+
+Examples:
+  cc-harness tag polybius +live +rust -experimental
+  cc-harness untag polybius
+EOF
+}
+
+_help_status() {
+cat <<'EOF'
+cc-harness status [--json] [--tag TAG]
+
+Print harness version, claude binary, host uptime, and active sessions.
+
+Examples:
+  cc-harness status
+  cc-harness status --json | jq .
+  cc-harness status --tag live
+EOF
+}
+
+_help_doctor() {
+cat <<'EOF'
+cc-harness doctor
+
+Run environment checks: tmux installed and >= 3.0, claude on PATH,
+projects.conf parseable, every project path exists, terminal capable,
+fzf optional. Exit code = number of failures.
+
+Examples:
+  cc-harness doctor
+EOF
+}
+
+_help_logs() {
+cat <<'EOF'
+cc-harness logs <label>
+
+Print the last 3000 lines from the named session's pane to stdout.
+
+Examples:
+  cc-harness logs polybius
+  cc-harness logs polybius | grep ERROR
+EOF
+}
+
+_help_which() {
+cat <<'EOF'
+cc-harness which <label>
+
+Print the resolved (~ expanded) filesystem path for a project label.
+
+Examples:
+  cd "$(cc-harness which polybius)"
+EOF
+}
+
+_help_completion() {
+cat <<'EOF'
+cc-harness completion <bash|zsh|fish>
+
+Emit a shell completion script to stdout.
+
+Examples:
+  cc-harness completion bash > /etc/bash_completion.d/cc-harness
+  cc-harness completion zsh  > ~/.zsh/completions/_cc-harness
+  cc-harness completion fish > ~/.config/fish/completions/cc-harness.fish
 EOF
 }
 
