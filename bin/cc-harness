@@ -263,18 +263,20 @@ _resolve_path() {
 }
 
 _spawn() {
-    local label="$1" path="$2"
-    path="$(_resolve_path "$path")"
-    if [[ ! -d "$path" ]]; then
-        _die "$EXIT_CONFIG" spawn "no such dir: $path"
-    fi
+    local label="$1" path="$2" extra_flags="${3:-}"
+    _lib_validate_label "$label" || exit "$EXIT_CONFIG"
+    path="$(_lib_resolve_path "$path")"
+    [[ -d "$path" ]] || _die "$EXIT_CONFIG" spawn "no such dir: $path"
+    _lib_preflight_claude
+    _lib_preflight_tmux
     if tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
         tmux select-window -t "$CCH_SESSION:$label"
     else
         tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
-            "$CCH_CLAUDE $CCH_FLAGS"
+            "$CCH_CLAUDE $CCH_FLAGS $extra_flags"
         tmux select-window -t "$CCH_SESSION:$label"
     fi
+    _lib_log "spawn label=$label path=$path"
 }
 
 _cmd_new() {
