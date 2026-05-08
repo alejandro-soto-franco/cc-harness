@@ -800,12 +800,16 @@ EOF
 }
 
 _cmd_attach() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help attach 2>/dev/null || _help; return 0; }
+    local label="${1:-}"
+
     [[ -f "$CCH_CONF" ]] || _seed_conf
+
     if ! tmux has-session -t "$CCH_SESSION" 2>/dev/null; then
         tmux new-session -d -s "$CCH_SESSION" -n menu \
             "exec '$CCH_SELF' menu"
         tmux set-option -t "$CCH_SESSION" status-style "bg=colour236,fg=colour250"
-        tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
+        tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]| "
         tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
         tmux set-option -t "$CCH_SESSION" mouse on
     else
@@ -817,6 +821,7 @@ _cmd_attach() {
                        "exec '$CCH_SELF' menu"
         fi
     fi
+
     # Stale-window detection: rename windows whose pane PID is dead.
     while IFS=$'\t' read -r idx wname pid; do
         [[ "$wname" == menu || "$wname" == \[dead\]* ]] && continue
@@ -824,6 +829,19 @@ _cmd_attach() {
             tmux rename-window -t "$CCH_SESSION:$idx" "[dead] $wname"
         fi
     done < <(tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_pid}' 2>/dev/null)
+
+    if [[ -n "$label" ]]; then
+        # Independent client view via grouped session.
+        local view="cc-harness-view-$$-$label"
+        tmux new-session -d -t "$CCH_SESSION" -s "$view" 2>/dev/null || true
+        if [[ -n "${TMUX:-}" ]]; then
+            tmux switch-client -t "$view"
+            tmux select-window -t "$view:$label" 2>/dev/null || true
+        else
+            tmux attach-session -t "$view"
+        fi
+        return 0
+    fi
 
     if [[ -n "${TMUX:-}" ]]; then
         tmux switch-client -t "$CCH_SESSION"
@@ -871,7 +889,13 @@ fi
 _lib_paths
 _lib_migrate
 case "${1:-attach}" in
-    attach|"")    _cmd_attach ;;
+    attach)
+            shift
+            _cmd_attach "${1:-}"
+            ;;
+        "")
+            _cmd_attach
+            ;;
     list)         shift; _cmd_list "$@" ;;
     add)          shift; _cmd_add "$@" ;;
     remove)       shift; _cmd_remove "$@" ;;
