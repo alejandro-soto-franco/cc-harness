@@ -418,6 +418,244 @@ _cmd_kill() {
     _tmux kill-window -t "$CCH_SESSION:$pick"
 }
 
+_cmd_list() {
+    local tag="" show_tags=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tag)    tag="${2:-}"; shift 2 ;;
+            --tags)   show_tags=1; shift ;;
+            -*) _die "$EXIT_USAGE" list "unknown flag: $1" ;;
+            *)  _die "$EXIT_USAGE" list "unexpected arg: $1" ;;
+        esac
+    done
+
+    local line label path flags tags t
+
+    if (( show_tags )); then
+        local all_tags=""
+        while IFS= read -r line; do
+            _lib_assign "$line" || continue
+            for t in $tags; do all_tags+="$t"$'\n'; done
+        done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+        [[ -z "$all_tags" ]] && return 0
+        printf "%s" "$all_tags" | sort | uniq -c \
+            | awk '{printf "#%s (%d)\n", $2, $1}' | sort
+        return 0
+    fi
+
+    printf "%-16s %-40s %-8s %s\n" LABEL PATH EXISTS TAGS
+    while IFS= read -r line; do
+        _lib_assign "$line" || continue
+        local p; p="$(_lib_resolve_path "$path")"
+        local ex="X"; [[ -d "$p" ]] && ex="OK"
+
+        if [[ -n "$tag" ]]; then
+            local match=0
+            for t in $tags; do [[ "${t,,}" == "${tag,,}" ]] && match=1; done
+            (( match )) || continue
+        fi
+
+        local ttext=""
+        for t in $tags; do ttext+="#$t "; done
+        printf "%-16s %-40s %-8s %s\n" "$label" "$p" "$ex" "${ttext% }"
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+}
+
+_cmd_add() {
+    local label="" path="" flags="" dry=0
+    local -a tags=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --flags)    flags="${2:-}"; shift 2 ;;
+            --tag)      tags+=("${2:-}"); shift 2 ;;
+            --dry-run)  dry=1; shift ;;
+            -*)         _die "$EXIT_USAGE" add "unknown flag: $1" ;;
+            *)
+                if [[ -z "$label" ]]; then label="$1"
+                elif [[ -z "$path" ]]; then path="$1"
+                else _die "$EXIT_USAGE" add "too many args: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    [[ -n "$label" && -n "$path" ]] \
+        || _die "$EXIT_USAGE" add "usage: add <label> <path> [--flags '...'] [--tag t]"
+    _lib_validate_label "$label" || exit "$EXIT_CONFIG"
+    _lib_validate_path "$path"   || exit "$EXIT_CONFIG"
+    local t
+    for t in "${tags[@]}"; do
+        _lib_validate_tag "$t" || exit "$EXIT_CONFIG"
+    done
+
+    [[ -f "$CCH_CONF" ]] && _lookup_project "$label" >/dev/null 2>&1 \
+        && _die "$EXIT_CONFIG" add "label already exists: $label"
+
+    local line="$label = $path"
+    [[ -n "$flags" ]] && line+=" | $flags"
+    for t in "${tags[@]}"; do line+=" #$t"; done
+
+    if (( dry )); then printf "would append: %s\n" "$line"; return 0; fi
+
+    _lib_with_lock add _cmd_add_write "$line"
+}
+_cmd_add_write() {
+    [[ -f "$CCH_CONF" ]] || { mkdir -p "$(dirname "$CCH_CONF")"; touch "$CCH_CONF"; }
+    printf "%s\n" "$1" >> "$CCH_CONF"
+}
+
+_cmd_remove() {
+    local label="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) dry=1; shift ;;
+            -*) _die "$EXIT_USAGE" remove "unknown flag: $1" ;;
+            *) label="$1"; shift ;;
+        esac
+    done
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" remove "usage: remove <label>"
+    _lookup_project "$label" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" remove "no such label: $label"
+    if (( dry )); then printf "would remove: %s\n" "$label"; return 0; fi
+    _lib_with_lock remove _cmd_remove_write "$label"
+}
+_cmd_remove_write() {
+    local want="$1" tmp; tmp="$(mktemp)"
+    awk -v w="$want" '
+        /^[ \t]*(#|$)/ { print; next }
+        {
+            split($0, a, "=")
+            gsub(/^[ \t]+|[ \t]+$/, "", a[1])
+            if (a[1] == w) next
+            print
+        }
+    ' "$CCH_CONF" > "$tmp"
+    mv "$tmp" "$CCH_CONF"
+}
+
+_cmd_rename() {
+    local old="" new="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) dry=1; shift ;;
+            -*) _die "$EXIT_USAGE" rename "unknown flag: $1" ;;
+            *)
+                if [[ -z "$old" ]]; then old="$1"
+                elif [[ -z "$new" ]]; then new="$1"
+                else _die "$EXIT_USAGE" rename "too many args: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    [[ -n "$old" && -n "$new" ]] \
+        || _die "$EXIT_USAGE" rename "usage: rename <old> <new>"
+    _lib_validate_label "$new" || exit "$EXIT_CONFIG"
+    _lookup_project "$old" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" rename "no such label: $old"
+    _lookup_project "$new" >/dev/null 2>&1 \
+        && _die "$EXIT_CONFIG" rename "target label already exists: $new"
+    if (( dry )); then printf "would rename: %s -> %s\n" "$old" "$new"; return 0; fi
+
+    _lib_with_lock rename _cmd_rename_write "$old" "$new"
+    if _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$old"; then
+        _tmux rename-window -t "$CCH_SESSION:$old" "$new"
+    fi
+}
+_cmd_rename_write() {
+    local old="$1" new="$2" tmp; tmp="$(mktemp)"
+    awk -v o="$old" -v n="$new" '
+        /^[ \t]*(#|$)/ { print; next }
+        {
+            split($0, a, "=")
+            label=a[1]; gsub(/^[ \t]+|[ \t]+$/, "", label)
+            if (label == o) {
+                rest=substr($0, index($0, "=")+1)
+                printf "%s =%s\n", n, rest
+            } else print
+        }
+    ' "$CCH_CONF" > "$tmp"
+    mv "$tmp" "$CCH_CONF"
+}
+
+_cmd_tag() {
+    local target=""
+    local -a ops=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            +*|-*) ops+=("$1"); shift ;;
+            *)
+                if [[ -z "$target" ]]; then target="$1"
+                else _die "$EXIT_USAGE" tag "too many args: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    [[ -n "$target" && ${#ops[@]} -gt 0 ]] \
+        || _die "$EXIT_USAGE" tag "usage: tag <label> +foo -bar ..."
+    _lookup_project "$target" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" tag "no such label: $target"
+    local op tag
+    for op in "${ops[@]}"; do
+        tag="${op:1}"
+        _lib_validate_tag "$tag" || exit "$EXIT_CONFIG"
+    done
+    _lib_with_lock tag _cmd_tag_write "$target" "${ops[@]}"
+}
+_cmd_tag_write() {
+    local target="$1"; shift
+    local -a ops=("$@")
+    local tmp; tmp="$(mktemp)"
+    local line label path flags tags op sign tag t out
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*(#|$) ]]; then
+            printf "%s\n" "$line" >> "$tmp"; continue
+        fi
+        if ! _lib_assign "$line"; then
+            printf "%s\n" "$line" >> "$tmp"; continue
+        fi
+        if [[ "$label" != "$target" ]]; then
+            printf "%s\n" "$line" >> "$tmp"; continue
+        fi
+        for op in "${ops[@]}"; do
+            sign="${op:0:1}"; tag="${op:1}"
+            case "$sign" in
+                +) [[ " $tags " == *" $tag "* ]] || tags="$tags $tag" ;;
+                -) tags=" $tags "; tags="${tags// $tag / }" ;;
+            esac
+            tags="${tags## }"; tags="${tags%% }"
+        done
+        out="$label = $path"
+        [[ -n "$flags" ]] && out+=" | $flags"
+        for t in $tags; do out+=" #$t"; done
+        printf "%s\n" "$out" >> "$tmp"
+    done < "$CCH_CONF"
+    mv "$tmp" "$CCH_CONF"
+}
+
+_cmd_untag() {
+    local label="${1:-}"
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" untag "usage: untag <label>"
+    _lookup_project "$label" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" untag "no such label: $label"
+    _lib_with_lock untag _cmd_untag_write "$label"
+}
+_cmd_untag_write() {
+    local label="$1" tmp; tmp="$(mktemp)"
+    awk -v w="$label" '
+        /^[ \t]*(#|$)/ { print; next }
+        {
+            line=$0
+            split(line, a, "=")
+            l=a[1]; gsub(/^[ \t]+|[ \t]+$/, "", l)
+            if (l == w) sub(/[[:space:]]+#.*$/, "", line)
+            print line
+        }
+    ' "$CCH_CONF" > "$tmp"
+    mv "$tmp" "$CCH_CONF"
+}
+
 _filter_windows_by_tag() {
     local windows="$1" want_tag="$2" out="" line label path flags tags w t base
     while IFS= read -r line; do
@@ -564,9 +802,12 @@ case "$cmd" in
     menu)         _cmd_menu "$@" ;;
     new)          _cmd_new "$@" ;;
     kill)         _cmd_kill "$@" ;;
-    list)
-        grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
-        ;;
+    list)         _cmd_list "$@" ;;
+    add)          _cmd_add "$@" ;;
+    remove)       _cmd_remove "$@" ;;
+    rename)       _cmd_rename "$@" ;;
+    tag)          _cmd_tag "$@" ;;
+    untag)        _cmd_untag "$@" ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
     _parse-line)       _lib_parse "${1:-}" ;;
