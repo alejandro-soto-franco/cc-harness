@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (shellcheck + shfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install shellcheck and shfmt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          curl -fsSL "https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_amd64" \
+            -o /usr/local/bin/shfmt
+          chmod +x /usr/local/bin/shfmt
+          shellcheck --version
+          shfmt --version
+
+      - name: shellcheck
+        run: make lint
+
+      - name: shfmt --diff
+        run: make fmt-check
+
+  test:
+    name: Test (${{ matrix.os }} / ${{ matrix.bash }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bash: system
+          - os: macos-latest
+            bash: system   # macOS system bash is 3.2; portability gate
+          - os: macos-latest
+            bash: brew     # bash 5.x
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tmux + fzf (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tmux fzf
+
+      - name: Install tmux + fzf (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tmux fzf
+
+      - name: Install brew bash (macOS / brew)
+        if: matrix.bash == 'brew'
+        run: brew install bash
+
+      - name: Stub claude binary
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/claude" <<'EOF'
+          #!/usr/bin/env bash
+          [[ "${1:-}" == "--version" ]] && { echo "claude-stub 0.0.0-ci"; exit 0; }
+          exec sleep 9999
+          EOF
+          chmod +x "$HOME/.local/bin/claude"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run bats suite
+        env:
+          SHELL_OVERRIDE: ${{ matrix.bash == 'brew' && '/opt/homebrew/bin/bash' || '' }}
+        run: |
+          if [[ -n "$SHELL_OVERRIDE" && -x "$SHELL_OVERRIDE" ]]; then
+            BASH="$SHELL_OVERRIDE" make test
+          else
+            make test
+          fi
+
+      - name: Doctor self-check
+        run: |
+          mkdir -p "$HOME/.config/cc-harness"
+          echo "h = $HOME" > "$HOME/.config/cc-harness/projects.conf"
+          bin/cc-harness doctor || echo "(doctor warnings on CI runners are tolerated)"
