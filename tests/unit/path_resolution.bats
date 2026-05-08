@@ -20,11 +20,11 @@ teardown() { teardown_test_env; }
     [[ "$output" == *"config=$XDG_CONFIG_HOME/cc-harness/projects.conf"* ]]
 }
 
-@test "legacy is used when XDG file absent" {
+@test "legacy-only triggers migration: effective config is XDG after migration" {
     mkdir -p "$HOME/cc-harness"
     echo "foo = /tmp" > "$HOME/cc-harness/projects.conf"
     run_cch _debug-paths
-    [[ "$output" == *"config=$HOME/cc-harness/projects.conf"* ]]
+    [[ "$output" == *"config=$XDG_CONFIG_HOME/cc-harness/projects.conf"* ]]
 }
 
 @test "fresh install resolves to XDG default with no file yet" {
