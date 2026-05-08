@@ -1,0 +1,62 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. Please run `cc-harness doctor` and paste its
+        output below; that one command answers most environment questions.
+
+  - type: input
+    id: version
+    attributes:
+      label: cc-harness --version
+      placeholder: "cc-harness 0.1.0 (abc1234)"
+    validations:
+      required: true
+
+  - type: input
+    id: tmux
+    attributes:
+      label: tmux -V
+      placeholder: "tmux 3.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / shell
+      placeholder: "Fedora 43, bash 5.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: cc-harness doctor output
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add this projects.conf:
+           ```
+           foo = ~/code/foo
+           ```
+        2. Run `cc-harness new foo`
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
