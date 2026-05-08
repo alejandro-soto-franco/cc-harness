@@ -277,18 +277,85 @@ _spawn() {
     else
         _tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
             "$CCH_CLAUDE $CCH_FLAGS $extra_flags"
-        _tmux select-window -t "$CCH_SESSION:$label"
+        # Keep the pane around when claude exits so the user sees what happened
+        # and the menu can mark it [dead] on next attach. Best-effort: if claude
+        # exited fast enough that the window already vanished, ignore.
+        _tmux set-window-option -t "$CCH_SESSION:$label" remain-on-exit on \
+            2>/dev/null || true
+        _tmux select-window -t "$CCH_SESSION:$label" 2>/dev/null || true
     fi
     _lib_log "spawn label=$label path=$path"
 }
 
 _cmd_new() {
-    local pick label path
-    pick="$(_projects | _pick 'project>')" || return 0
-    [[ -z "${pick:-}" ]] && return 0
-    label="${pick%%=*}"; label="$(printf "%s" "$label" | tr -d '[:space:]')"
-    path="${pick#*=}"
-    _spawn "$label" "$path"
+    local mode=ask label=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --fresh)  mode=fresh; shift ;;
+            --switch) mode=switch; shift ;;
+            -*)       _die "$EXIT_USAGE" new "unknown flag: $1" ;;
+            *)        label="$1"; shift ;;
+        esac
+    done
+
+    if [[ -z "$label" ]]; then
+        local pick
+        pick="$(_projects | _pick 'project>')" || return 0
+        [[ -z "${pick:-}" ]] && return 0
+        label="$(printf "%s" "${pick%%=*}" | tr -d '[:space:]')"
+    fi
+
+    local line label_dummy path flags tags
+    line="$(_lookup_project "$label")" \
+        || _die "$EXIT_CONFIG" new "no such project: $label"
+    eval "$(_lib_parse "$line")"
+
+    local exists=0
+    _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+        | grep -qx -- "$label" && exists=1
+
+    case "$mode" in
+        switch)
+            (( exists )) || _die "$EXIT_TMUX" new "no window for $label"
+            _tmux select-window -t "$CCH_SESSION:$label"
+            ;;
+        fresh)
+            local n=2
+            while _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+                | grep -qx -- "$label-$n"; do n=$((n+1)); done
+            _spawn "$label-$n" "$path" "$flags"
+            ;;
+        ask)
+            if (( exists )); then
+                if [[ -t 0 ]]; then
+                    read -r -p "[s]witch / [f]resh / [c]ancel? " ans
+                else
+                    ans=s
+                fi
+                case "${ans:-s}" in
+                    s|S|"") _tmux select-window -t "$CCH_SESSION:$label" ;;
+                    f|F)
+                        local n=2
+                        while _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+                            | grep -qx -- "$label-$n"; do n=$((n+1)); done
+                        _spawn "$label-$n" "$path" "$flags"
+                        ;;
+                    *) return 0 ;;
+                esac
+            else
+                _spawn "$label" "$path" "$flags"
+            fi
+            ;;
+    esac
+}
+
+_lookup_project() {
+    local want="$1" line label path flags tags
+    while IFS= read -r line; do
+        eval "$(_lib_parse "$line" 2>/dev/null)" || continue
+        [[ "$label" == "$want" ]] && { printf "%s\n" "$line"; return 0; }
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
+    return 1
 }
 
 _cmd_kill() {
@@ -367,6 +434,9 @@ _cmd_attach() {
         _tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
         _tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
         _tmux set-option -t "$CCH_SESSION" mouse on
+        # Keep windows around when claude exits so users can read tracebacks
+        # and the next attach can rename them [dead].
+        _tmux set-window-option -t "$CCH_SESSION" remain-on-exit on 2>/dev/null || true
     else
         # Self-heal: if the menu window has been killed, recreate it at index 0.
         if ! _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx menu; then
@@ -375,6 +445,13 @@ _cmd_attach() {
                 || _tmux new-window -t "$CCH_SESSION:" -n menu \
                        "exec '$CCH_SELF' menu"
         fi
+        # Stale-window detection: rename windows whose pane PID is dead.
+        while IFS=$'\t' read -r idx wname pid; do
+            [[ "$wname" == menu || "$wname" == \[dead\]* ]] && continue
+            if ! kill -0 "$pid" 2>/dev/null; then
+                _tmux rename-window -t "$CCH_SESSION:$idx" "[dead] $wname"
+            fi
+        done < <(_tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_pid}' 2>/dev/null)
     fi
     if [[ -n "${TMUX:-}" ]]; then
         _tmux switch-client -t "$CCH_SESSION"
@@ -421,25 +498,27 @@ _lib_paths
 # don't mutate state during introspection.
 case "${1:-}" in _*) ;; *) _lib_migrate ;; esac
 
-case "${1:-attach}" in
-    attach|"")    _cmd_attach ;;
-    menu)         _cmd_menu ;;
-    new)          _cmd_new ;;
-    kill)         _cmd_kill ;;
+cmd="${1:-attach}"
+[[ $# -gt 0 ]] && shift
+case "$cmd" in
+    attach|"")    _cmd_attach "$@" ;;
+    menu)         _cmd_menu "$@" ;;
+    new)          _cmd_new "$@" ;;
+    kill)         _cmd_kill "$@" ;;
     list)
         grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
         ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
-    _parse-line)     shift; _lib_parse "$1" ;;
-    _validate-label)   shift; _lib_validate_label "${1:-}" ;;
-    _validate-tag)     shift; _lib_validate_tag "${1:-}" ;;
-    _validate-path)    shift; _lib_validate_path "${1:-}" ;;
+    _parse-line)       _lib_parse "${1:-}" ;;
+    _validate-label)   _lib_validate_label "${1:-}" ;;
+    _validate-tag)     _lib_validate_tag "${1:-}" ;;
+    _validate-path)    _lib_validate_path "${1:-}" ;;
     _preflight-claude) _lib_preflight_claude ;;
     _preflight-tmux)   _lib_preflight_tmux ;;
     -h|--help)    _help ;;
     *)
-        printf "cc-harness: unknown command: %s\n" "$1" >&2
+        printf "cc-harness: unknown command: %s\n" "$cmd" >&2
         _help >&2
         exit 2
         ;;
