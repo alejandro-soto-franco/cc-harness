@@ -495,6 +495,36 @@ _cmd_add_write() {
     printf "%s\n" "$1" >> "$CCH_CONF"
 }
 
+_cmd_remove() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help remove 2>/dev/null || _help; return 0; }
+    local label="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) dry=1; shift ;;
+            -*) _die "$EXIT_USAGE" remove "unknown flag: $1" ;;
+            *) label="$1"; shift ;;
+        esac
+    done
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" remove "usage: remove <label>"
+    _lookup_project "$label" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" remove "no such label: $label"
+    if (( dry )); then printf "would remove: %s\n" "$label"; return 0; fi
+    _lib_with_lock remove _cmd_remove_write "$label"
+}
+_cmd_remove_write() {
+    local want="$1" tmp; tmp="$(mktemp)"
+    awk -v w="$want" '
+        /^[[:space:]]*(#|$)/ { print; next }
+        {
+            split($0, a, "=")
+            label=a[1]; gsub(/^[ \t]+|[ \t]+$/, "", label)
+            if (label == w) next
+            print
+        }
+    ' "$CCH_CONF" > "$tmp"
+    mv "$tmp" "$CCH_CONF"
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -621,6 +651,7 @@ case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
     list)         shift; _cmd_list "$@" ;;
     add)          shift; _cmd_add "$@" ;;
+    remove)       shift; _cmd_remove "$@" ;;
     menu)         _cmd_menu ;;
     new)          shift; _cmd_new "$@" ;;
     kill)         shift; _cmd_kill "$@" ;;

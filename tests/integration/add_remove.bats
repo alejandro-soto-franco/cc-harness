@@ -39,3 +39,22 @@ teardown() { teardown_test_env; }
     [ "$status" -eq 0 ]
     ! grep -q "^proj1" "$XDG_CONFIG_HOME/cc-harness/projects.conf"
 }
+
+@test "remove: drops a row" {
+    "$CCH_BIN" add proj1 "$HOME"
+    run_cch remove proj1
+    [ "$status" -eq 0 ]
+    ! grep -q "^proj1" "$XDG_CONFIG_HOME/cc-harness/projects.conf"
+}
+
+@test "remove: errors on missing label" {
+    run_cch remove ghost
+    [ "$status" -eq 3 ]
+}
+
+@test "remove --dry-run" {
+    "$CCH_BIN" add proj1 "$HOME"
+    run_cch remove proj1 --dry-run
+    [ "$status" -eq 0 ]
+    grep -q "^proj1" "$XDG_CONFIG_HOME/cc-harness/projects.conf"
+}
