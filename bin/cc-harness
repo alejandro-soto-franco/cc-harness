@@ -19,6 +19,7 @@ CCH_VERBOSE="${CCH_VERBOSE:-0}"
 CCH_QUIET="${CCH_QUIET:-0}"
 readonly CCH_VERSION="0.1.0"
 
+# shellcheck disable=SC2034 # public exit-code surface; some kept for users
 readonly EXIT_OK=0
 readonly EXIT_GENERIC=1
 readonly EXIT_USAGE=2
@@ -40,6 +41,7 @@ _warn() {
 
 # Wrapper so tests (and advanced users) can target an isolated tmux server
 # via TMUX_FLAGS (e.g. "-L cch-test-1234"). Empty in normal use.
+# shellcheck disable=SC2086 # TMUX_FLAGS is a flag list; word-split is intentional
 _tmux() { tmux $TMUX_FLAGS "$@"; }
 
 # Resolve config + state paths in priority order: CCH_HOME → XDG → legacy.
@@ -64,7 +66,6 @@ _lib_paths() {
     fi
     CCH_LOCK="${XDG_RUNTIME_DIR:-/tmp}/cc-harness-$UID.lock"
     CCH_LOG="$CCH_STATE_DIR/cc-harness.log"
-    CCH_MIGRATED_MARKER="$CCH_STATE_DIR/.migrated-from-legacy"
 }
 
 # One-time XDG migration. Copies $HOME/cc-harness/projects.conf to
@@ -94,7 +95,6 @@ _lib_migrate() {
     CCH_CONF="$xdg_config/projects.conf"
     CCH_STATE_DIR="$xdg_state"
     CCH_LOG="$CCH_STATE_DIR/cc-harness.log"
-    CCH_MIGRATED_MARKER="$marker"
 }
 
 _have() { command -v "$1" >/dev/null 2>&1; }
@@ -115,7 +115,7 @@ _lib_parse() {
     tags=""
     while [[ "$rest" =~ [[:space:]]\#([a-zA-Z0-9_-]+)[[:space:]]*$ ]]; do
         tags="${BASH_REMATCH[1]} $tags"
-        rest="${rest% \#${BASH_REMATCH[1]}*}"
+        rest="${rest% \#"${BASH_REMATCH[1]}"*}"
         rest="${rest%"${rest##*[![:space:]]}"}"
     done
     tags="${tags% }"
@@ -139,7 +139,7 @@ _lib_parse() {
 # interpreted as shell commands.
 _lib_assign() {
     local line="$1" key value
-    label= path= flags= tags=
+    label=''; path=''; flags=''; tags=''
     while IFS='=' read -r key value; do
         case "$key" in
             label) label="$value" ;;
@@ -231,7 +231,7 @@ _lib_parse_global_flags() {
         case "$1" in
             -v|--verbose) CCH_VERBOSE=1; shift ;;
             -q|--quiet)   CCH_QUIET=1;   shift ;;
-            --no-color)   NO_COLOR=1;    shift ;;
+            --no-color)   export NO_COLOR=1; shift ;;
             *) break ;;
         esac
     done
@@ -720,8 +720,9 @@ _cmd_doctor() {
     _check "every project path exists"  "_doctor_paths"
     _check "TERM supports 256color"     "[[ \$TERM == *256* ]] || tput colors | awk '{exit !(\$1>=256)}'"
     _check "fzf available (optional)"   "command -v fzf"
-    if [[ -d "$HOME/cc-harness" && "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
-        printf "  !  legacy ~/cc-harness/ still present (safe to remove)\n"
+    if [[ -f "$HOME/cc-harness/projects.conf" \
+          && "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
+        printf "  !  legacy ~/cc-harness/projects.conf still present (safe to remove)\n"
     fi
     return "$fail"
 }
@@ -747,7 +748,7 @@ _cmd_logs() {
 _cmd_which() {
     local label="${1:-}"
     [[ -n "$label" ]] || _die "$EXIT_USAGE" which "usage: which <label>"
-    local line label_dummy path flags tags
+    local line path flags tags
     line="$(_lookup_project "$label")" \
         || _die "$EXIT_CONFIG" which "no such label: $label"
     _lib_assign "$line" || _die "$EXIT_CONFIG" which "could not parse: $line"
