@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Common bats-core test helpers for cc-harness.
 
+bats_require_minimum_version 1.5.0
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CCH_BIN="$REPO_ROOT/bin/cc-harness"
 FIXTURES="$REPO_ROOT/tests/fixtures"
