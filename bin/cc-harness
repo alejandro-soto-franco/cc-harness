@@ -17,6 +17,7 @@ CCH_SELF="$(readlink -f "$0")"
 TMUX_FLAGS="${TMUX_FLAGS:-}"
 CCH_VERBOSE="${CCH_VERBOSE:-0}"
 CCH_QUIET="${CCH_QUIET:-0}"
+readonly CCH_VERSION="0.1.0"
 
 readonly EXIT_OK=0
 readonly EXIT_GENERIC=1
@@ -769,6 +770,8 @@ _filter_windows_by_tag() {
 }
 
 _cmd_menu() {
+    # Ctrl-C inside fzf shouldn't drop us to a broken shell; just redraw.
+    trap ': ' INT TERM
     while true; do
         clear
         cat <<EOF
@@ -832,6 +835,13 @@ _cmd_attach() {
         # Keep windows around when claude exits so users can read tracebacks
         # and the next attach can rename them [dead].
         _tmux set-window-option -t "$CCH_SESSION" remain-on-exit on 2>/dev/null || true
+        # prefix + 0 self-heals: re-creates the menu window if it was closed.
+        _tmux bind-key -T prefix 0 \
+            "if-shell '! tmux list-windows -F \"#W\" | grep -qx menu' \
+            'new-window -t :=0 -n menu \"exec $CCH_SELF menu\"' \\\; \
+            select-window -t :=0"
+        # prefix + N (capital) opens the project picker via cc-harness new.
+        _tmux bind-key -T prefix N run-shell "$CCH_SELF new"
     else
         # Self-heal: if the menu window has been killed, recreate it at index 0.
         if ! _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx menu; then
@@ -869,33 +879,315 @@ _cmd_attach() {
 }
 
 _help() {
-    cat <<EOF
-cc-harness — Claude Code multi-session launcher
+    local sub="${1:-}"
+    case "$sub" in
+        ""|--help|-h) _help_main ;;
+        new)        _help_new ;;
+        kill)       _help_kill ;;
+        list)       _help_list ;;
+        add)        _help_add ;;
+        remove)     _help_remove ;;
+        rename)     _help_rename ;;
+        tag|untag)  _help_tag ;;
+        status)     _help_status ;;
+        doctor)     _help_doctor ;;
+        logs)       _help_logs ;;
+        which)      _help_which ;;
+        attach)     _help_attach ;;
+        completion) _help_completion ;;
+        *) printf "cc-harness: no help for: %s\n" "$sub" >&2; return 2 ;;
+    esac
+}
 
-Usage: cc-harness [command]
-  (no args)    launch / attach the harness tmux session
-  new          spawn a new claude session (project picker)
-  kill         kill an existing claude session
-  menu         (internal) run the menu loop in window 0
-  -h, --help   show this help
+_help_main() {
+cat <<EOF
+cc-harness $CCH_VERSION — Claude Code multi-session launcher
 
-Config:
-  $CCH_CONF        edit to add or remove projects
-Env:
-  CCH_FLAGS        flags passed to claude on every spawn
-                   (default: --dangerously-skip-permissions)
-  CCH_HOME         override harness dir (default: ~/cc-harness)
-  CCH_SESSION      tmux session name (default: cc-harness)
-  CCH_CLAUDE       path to the claude binary (default: claude on PATH)
+Usage: cc-harness [-v|-q] [--no-color] <command> [args]
 
-Inside the harness (Ctrl-b is the tmux prefix):
-  prefix + 0       menu window
-  prefix + 1..9    session N
-  prefix + w       interactive window list
-  prefix + d       detach
-  prefix + ,       rename current window
-  prefix + &       kill current window (close that claude session)
+Commands:
+  attach [<label>]                   attach (or open a per-label client view)
+  new [<label>] [--fresh|--switch]   spawn or switch to a session
+  kill [--all] [--tag T] [--dry-run] kill a session
+  list [--tag T] [--tags]            show projects (or unique tags)
+  add <label> <path> [--flags '...'] [--tag t]   add a project
+  remove <label> [--dry-run]
+  rename <old> <new>
+  tag <label> +foo -bar
+  untag <label>
+  status [--json] [--tag T]
+  doctor                             run environment checks
+  logs <label>                       capture last 3000 lines from a pane
+  which <label>                      print resolved path
+  completion <shell>                 emit completion script
+  version | --version
+  <subcmd> --help                    per-subcommand help
+
+Configuration: \$XDG_CONFIG_HOME/cc-harness/projects.conf
+Environment:   CCH_HOME, CCH_FLAGS, CCH_CLAUDE, CCH_SESSION, NO_COLOR
 EOF
+}
+
+_help_new() {
+cat <<'EOF'
+cc-harness new [<label>] [--fresh | --switch]
+
+Spawn a new claude session, or switch to an existing one.
+
+Examples:
+  cc-harness new
+  cc-harness new polybius
+  cc-harness new polybius --fresh
+  cc-harness new polybius --switch
+EOF
+}
+
+_help_attach() {
+cat <<'EOF'
+cc-harness attach [<label>]
+
+Attach to the harness session. With <label>, open an isolated client view
+focused on that session via a grouped tmux session (independent window
+pointer per terminal).
+
+Examples:
+  cc-harness attach
+  cc-harness attach polybius
+EOF
+}
+
+_help_kill() {
+cat <<'EOF'
+cc-harness kill [--all] [--tag TAG] [--dry-run]
+
+Pick a window to kill, or kill in bulk by tag.
+
+Examples:
+  cc-harness kill
+  cc-harness kill --tag live --dry-run
+  cc-harness kill --all
+EOF
+}
+
+_help_list() {
+cat <<'EOF'
+cc-harness list [--tag TAG] [--tags]
+
+Print configured projects, optionally filtered by tag.
+--tags prints unique tags with counts instead of the project table.
+
+Examples:
+  cc-harness list
+  cc-harness list --tag math
+  cc-harness list --tags
+EOF
+}
+
+_help_add() {
+cat <<'EOF'
+cc-harness add <label> <path> [--flags 'STR'] [--tag TAG]... [--dry-run]
+
+Append a row to projects.conf.
+
+Examples:
+  cc-harness add polybius ~/Polybius
+  cc-harness add polybius ~/Polybius --flags '--model opus' --tag live --tag rust
+EOF
+}
+
+_help_remove() {
+cat <<'EOF'
+cc-harness remove <label> [--dry-run]
+
+Remove the row for <label> from projects.conf.
+
+Examples:
+  cc-harness remove polybius
+  cc-harness remove polybius --dry-run
+EOF
+}
+
+_help_rename() {
+cat <<'EOF'
+cc-harness rename <old> <new>
+
+Rename the projects.conf entry, and rename the live tmux window if present.
+
+Examples:
+  cc-harness rename polybius poly
+EOF
+}
+
+_help_tag() {
+cat <<'EOF'
+cc-harness tag <label> +TAG -TAG ...
+cc-harness untag <label>
+
+Add or remove tags on a project. untag strips all tags from a row.
+
+Examples:
+  cc-harness tag polybius +live +rust -experimental
+  cc-harness untag polybius
+EOF
+}
+
+_help_status() {
+cat <<'EOF'
+cc-harness status [--json] [--tag TAG]
+
+Print harness version, claude binary, host uptime, and active sessions.
+
+Examples:
+  cc-harness status
+  cc-harness status --json | jq .
+  cc-harness status --tag live
+EOF
+}
+
+_help_doctor() {
+cat <<'EOF'
+cc-harness doctor
+
+Run environment checks: tmux installed and >= 3.0, claude on PATH,
+projects.conf parseable, every project path exists, terminal capable,
+fzf optional. Exit code = number of failures.
+
+Examples:
+  cc-harness doctor
+EOF
+}
+
+_help_logs() {
+cat <<'EOF'
+cc-harness logs <label>
+
+Print the last 3000 lines from the named session's pane to stdout.
+
+Examples:
+  cc-harness logs polybius
+  cc-harness logs polybius | grep ERROR
+EOF
+}
+
+_help_which() {
+cat <<'EOF'
+cc-harness which <label>
+
+Print the resolved (~ expanded) filesystem path for a project label.
+
+Examples:
+  cd "$(cc-harness which polybius)"
+EOF
+}
+
+_help_completion() {
+cat <<'EOF'
+cc-harness completion <bash|zsh|fish>
+
+Emit a shell completion script to stdout.
+
+Examples:
+  cc-harness completion bash > /etc/bash_completion.d/cc-harness
+  cc-harness completion zsh  > ~/.zsh/completions/_cc-harness
+  cc-harness completion fish > ~/.config/fish/completions/cc-harness.fish
+EOF
+}
+
+_cmd_completion() {
+    case "${1:-}" in
+        bash) _emit_bash_completion ;;
+        zsh)  _emit_zsh_completion ;;
+        fish) _emit_fish_completion ;;
+        *) _die "$EXIT_USAGE" completion "usage: completion <bash|zsh|fish>" ;;
+    esac
+}
+
+_emit_bash_completion() {
+cat <<'BASHEOF'
+# cc-harness bash completion
+_cc_harness() {
+    local cur prev cmds
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    cmds="attach new kill list add remove rename tag untag status doctor logs which completion version --version --help -h"
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
+        return 0
+    fi
+    case "$prev" in
+        new|kill|logs|which|rename|remove|tag|untag)
+            local labels
+            labels=$(cc-harness list 2>/dev/null | awk 'NR>1 {print $1}')
+            COMPREPLY=( $(compgen -W "$labels" -- "$cur") )
+            ;;
+        --tag)
+            local tags
+            tags=$(cc-harness list --tags 2>/dev/null | awk '{sub(/^#/,"",$1); print $1}')
+            COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+            ;;
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            ;;
+    esac
+}
+complete -F _cc_harness cc-harness
+BASHEOF
+}
+
+_emit_zsh_completion() {
+cat <<'ZSHEOF'
+#compdef cc-harness
+_cc_harness() {
+    local -a cmds
+    cmds=(
+        'attach:attach the harness session'
+        'new:spawn a new claude session'
+        'kill:kill an existing claude session'
+        'list:list configured projects'
+        'add:add a project'
+        'remove:remove a project'
+        'rename:rename a project'
+        'tag:add/remove tags on a project'
+        'untag:strip all tags from a project'
+        'status:show running session status'
+        'doctor:run environment checks'
+        'logs:capture pane output for a project'
+        'which:print resolved path of a project'
+        'completion:emit shell completion'
+        'version:print version'
+    )
+    if (( CURRENT == 2 )); then
+        _describe 'command' cmds
+    else
+        case "$words[2]" in
+            new|kill|logs|which|rename|remove|tag|untag)
+                local -a labels
+                labels=(${(f)"$(cc-harness list 2>/dev/null | awk 'NR>1 {print $1}')"})
+                _describe 'project' labels ;;
+            completion)
+                _arguments '*:shell:(bash zsh fish)' ;;
+        esac
+    fi
+}
+_cc_harness "$@"
+ZSHEOF
+}
+
+_emit_fish_completion() {
+cat <<'FISHEOF'
+# cc-harness fish completion
+function __cch_labels
+    cc-harness list 2>/dev/null | awk 'NR>1 {print $1}'
+end
+function __cch_tags
+    cc-harness list --tags 2>/dev/null | awk '{sub(/^#/,"",$1); print $1}'
+end
+complete -c cc-harness -f -n '__fish_use_subcommand' -a 'attach new kill list add remove rename tag untag status doctor logs which completion version'
+complete -c cc-harness -n '__fish_seen_subcommand_from new kill logs which rename remove tag untag' -a '(__cch_labels)'
+complete -c cc-harness -l tag -a '(__cch_tags)'
+complete -c cc-harness -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+FISHEOF
 }
 
 _lib_parse_global_flags "$@"
@@ -908,6 +1200,18 @@ case "${1:-}" in _*) ;; *) _lib_migrate ;; esac
 
 cmd="${1:-attach}"
 [[ $# -gt 0 ]] && shift
+
+# Per-subcommand --help routing: any registered subcommand followed by
+# --help / -h prints its dedicated page instead of running the command.
+case "$cmd" in
+    attach|new|kill|list|add|remove|rename|tag|untag|status|doctor|logs|which|completion)
+        if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+            _help "$cmd"
+            exit 0
+        fi
+        ;;
+esac
+
 case "$cmd" in
     attach|"")    _cmd_attach "$@" ;;
     menu)         _cmd_menu "$@" ;;
@@ -923,6 +1227,14 @@ case "$cmd" in
     doctor)       _cmd_doctor "$@" ;;
     logs)         _cmd_logs "$@" ;;
     which)        _cmd_which "$@" ;;
+    completion)   _cmd_completion "$@" ;;
+    version|--version|-V)
+        sha=""
+        if command -v git >/dev/null 2>&1; then
+            sha="$(git -C "$(dirname "$CCH_SELF")/.." rev-parse --short HEAD 2>/dev/null || true)"
+        fi
+        printf "cc-harness %s%s\n" "$CCH_VERSION" "${sha:+ ($sha)}"
+        ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
     _parse-line)       _lib_parse "${1:-}" ;;
