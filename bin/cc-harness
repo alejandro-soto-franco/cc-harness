@@ -691,6 +691,17 @@ _cmd_status() {
     done <<< "$windows"
 }
 
+_cmd_which() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help which 2>/dev/null || _help; return 0; }
+    local label="${1:-}"
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" which "usage: which <label>"
+    local line; line="$(_lookup_project "$label")" \
+        || _die "$EXIT_CONFIG" which "no such label: $label"
+    local cc_label cc_path cc_flags cc_tags
+    eval "$(CCH_PARSE_PREFIX=cc_ _lib_parse "$line")"
+    _lib_resolve_path "$cc_path"; printf "\n"
+}
+
 _cmd_logs() {
     [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help logs 2>/dev/null || _help; return 0; }
     local label="${1:-}"
@@ -866,6 +877,7 @@ case "${1:-attach}" in
     remove)       shift; _cmd_remove "$@" ;;
     rename)       shift; _cmd_rename "$@" ;;
     status)       shift; _cmd_status "$@" ;;
+    which)        shift; _cmd_which "$@" ;;
     logs)         shift; _cmd_logs "$@" ;;
     doctor)       shift; _cmd_doctor "$@" ;;
     tag)          shift; _cmd_tag "$@" ;;
