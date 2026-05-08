@@ -1,8 +1,11 @@
 # User data, not source. The repo ships projects.conf.example instead.
 projects.conf
 
+# Internal design docs / agent scratch — not part of the public source tree.
+docs/
+docs/superpowers/
+
 # Build artifacts
-docs/cc-harness.1
 dist/
 *.deb
 *.rpm
