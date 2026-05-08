@@ -20,6 +20,25 @@ CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
 CCH_CLAUDE="${CCH_CLAUDE:-claude}"
 CCH_SELF="$(readlink -f "$0")"
 
+readonly EXIT_OK=0
+readonly EXIT_GENERIC=1
+readonly EXIT_USAGE=2
+readonly EXIT_CONFIG=3
+readonly EXIT_TMUX=4
+readonly EXIT_DEPS=5
+
+_die() {
+    # _die <exit-code> <subcmd> <message...>
+    local code="$1" subcmd="$2"; shift 2
+    printf "cc-harness: %s: %s\n" "$subcmd" "$*" >&2
+    exit "$code"
+}
+
+_warn() {
+    local subcmd="$1"; shift
+    printf "cc-harness: %s: %s\n" "$subcmd" "$*" >&2
+}
+
 _lib_paths() {
     local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
     local xdg_state="${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -123,9 +142,7 @@ _spawn() {
     local label="$1" path="$2"
     path="$(_resolve_path "$path")"
     if [[ ! -d "$path" ]]; then
-        printf "cc-harness: no such dir: %s\n" "$path" >&2
-        sleep 1.5
-        return 1
+        _die "$EXIT_CONFIG" spawn "no such dir: $path"
     fi
     if tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
         tmux select-window -t "$CCH_SESSION:$label"
