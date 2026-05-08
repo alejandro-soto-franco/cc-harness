@@ -820,6 +820,7 @@ EOF
 }
 
 _cmd_attach() {
+    local label="${1:-}"
     [[ -f "$CCH_CONF" ]] || _seed_conf
     if ! _tmux has-session -t "$CCH_SESSION" 2>/dev/null; then
         _tmux new-session -d -s "$CCH_SESSION" -n menu \
@@ -846,6 +847,19 @@ _cmd_attach() {
                 _tmux rename-window -t "$CCH_SESSION:$idx" "[dead] $wname"
             fi
         done < <(_tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_pid}' 2>/dev/null)
+    fi
+    if [[ -n "$label" ]]; then
+        # Independent client view via a grouped tmux session — attaches to the
+        # same session contents but with its own active-window cursor, so a
+        # second screen / second user can sit on a single project.
+        local view="cc-harness-view-$$-$label"
+        _tmux new-session -d -t "$CCH_SESSION" -s "$view" 2>/dev/null || true
+        if [[ -n "${TMUX:-}" ]]; then
+            _tmux switch-client -t "$view" \; select-window -t "$view:$label"
+        else
+            _tmux attach-session -t "$view" \; select-window -t "$view:$label"
+        fi
+        return 0
     fi
     if [[ -n "${TMUX:-}" ]]; then
         _tmux switch-client -t "$CCH_SESSION"
