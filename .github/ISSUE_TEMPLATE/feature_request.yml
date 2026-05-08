@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a subcommand, flag, or behavior change
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please skim the design doc's non-goals (§1) and
+        explicitly-rejected list (§11) to make sure the request is in scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is hard today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: A specific subcommand, flag, or workflow.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require new runtime dependencies beyond bash, tmux, optional fzf.
+          required: true
+        - label: This does not introduce telemetry, auto-update, or a watchdog daemon.
+          required: true
