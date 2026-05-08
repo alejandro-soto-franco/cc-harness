@@ -406,6 +406,52 @@ _filter_windows_by_tag() {
     printf "%s" "${out%$'\n'}"
 }
 
+_cmd_list() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help list 2>/dev/null || _help; return 0; }
+    local tag="" show_tags=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tag)    tag="$2"; shift 2 ;;
+            --tags)   show_tags=1; shift ;;
+            *) _die "$EXIT_USAGE" list "unknown flag: $1" ;;
+        esac
+    done
+
+    if (( show_tags )); then
+        local all_tags=""
+        local cc_label cc_path cc_flags cc_tags
+        while IFS= read -r line; do
+            cc_label="" cc_path="" cc_flags="" cc_tags=""
+            eval "$(CCH_PARSE_PREFIX=cc_ _lib_parse "$line" 2>/dev/null)" || continue
+            for t in $cc_tags; do all_tags+="$t"$'\n'; done
+        done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+        if [[ -n "$all_tags" ]]; then
+            printf "%s" "$all_tags" | sort | uniq -c \
+                | awk '{printf "#%s (%d)\n", $2, $1}' | sort
+        fi
+        return 0
+    fi
+
+    printf "%-16s %-40s %-8s %s\n" LABEL PATH EXISTS TAGS
+    local cc_label cc_path cc_flags cc_tags
+    while IFS= read -r line; do
+        cc_label="" cc_path="" cc_flags="" cc_tags=""
+        eval "$(CCH_PARSE_PREFIX=cc_ _lib_parse "$line" 2>/dev/null)" || continue
+        local p; p="$(_lib_resolve_path "$cc_path")"
+        local ex="X"; [[ -d "$p" ]] && ex="Y"
+
+        if [[ -n "$tag" ]]; then
+            local match=0
+            for t in $cc_tags; do [[ "${t,,}" == "${tag,,}" ]] && match=1; done
+            (( match )) || continue
+        fi
+
+        local ttext=""
+        for t in $cc_tags; do ttext+="#$t "; done
+        printf "%-16s %-40s %-8s %s\n" "$cc_label" "$p" "$ex" "${ttext% }"
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -530,9 +576,7 @@ _lib_paths
 _lib_migrate
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
-    list)
-        grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
-        ;;
+    list)         shift; _cmd_list "$@" ;;
     menu)         _cmd_menu ;;
     new)          shift; _cmd_new "$@" ;;
     kill)         shift; _cmd_kill "$@" ;;
