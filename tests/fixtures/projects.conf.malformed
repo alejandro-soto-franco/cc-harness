@@ -1,0 +1,4 @@
+no-equals
+   = /tmp/missing-label
+foo = /tmp/foo
+foo = /tmp/duplicate
