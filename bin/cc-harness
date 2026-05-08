@@ -656,6 +656,103 @@ _cmd_untag_write() {
     mv "$tmp" "$CCH_CONF"
 }
 
+_cmd_status() {
+    local json=0 tag=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json=1; shift ;;
+            --tag)  tag="${2:-}"; shift 2 ;;
+            -*) _die "$EXIT_USAGE" status "unknown flag: $1" ;;
+            *)  _die "$EXIT_USAGE" status "unexpected arg: $1" ;;
+        esac
+    done
+    local version="0.1.0"
+    local claude_path; claude_path="$(command -v "$CCH_CLAUDE" 2>/dev/null || echo '(missing)')"
+    local claude_ver=""
+    [[ -x "$claude_path" ]] && claude_ver="$("$claude_path" --version 2>/dev/null | head -1)"
+    local windows
+    windows="$(_tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_current_path}	#{pane_pid}' 2>/dev/null || true)"
+
+    if (( json )); then
+        printf '{"version":"%s","session":"%s","claude":"%s","windows":[' \
+            "$version" "$CCH_SESSION" "$claude_path"
+        local first=1 idx wname cwd pid
+        while IFS=$'\t' read -r idx wname cwd pid; do
+            [[ -z "$wname" ]] && continue
+            (( first )) || printf ","
+            first=0
+            printf '{"index":%s,"name":"%s","cwd":"%s","pid":%s}' \
+                "$idx" "$wname" "$cwd" "$pid"
+        done <<< "$windows"
+        printf ']}\n'
+        return 0
+    fi
+
+    printf "cc-harness %s  session=%s\n" "$version" "$CCH_SESSION"
+    printf "claude: %s %s\n" "$claude_path" "$claude_ver"
+    printf "host uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
+    printf "log: %s\n" "${CCH_LOG}"
+    printf "\nwindows:\n"
+    local idx wname cwd pid
+    while IFS=$'\t' read -r idx wname cwd pid; do
+        [[ -z "$wname" ]] && continue
+        printf "  [%s] %-16s pid=%s  cwd=%s\n" "$idx" "$wname" "$pid" "$cwd"
+    done <<< "$windows"
+}
+
+_cmd_doctor() {
+    local fail=0
+    _check() {
+        local name="$1" cmd="$2"
+        if eval "$cmd" >/dev/null 2>&1; then
+            printf "  OK %s\n" "$name"
+        else
+            printf "  X  %s\n" "$name"
+            fail=$((fail + 1))
+        fi
+    }
+    printf "cc-harness doctor:\n"
+    _check "tmux installed"             "command -v tmux"
+    _check "tmux >= 3.0"                "tmux -V | awk '{print \$2}' | tr -d '[:alpha:]' | awk '{exit !(\$1+0 >= 3.0)}'"
+    _check "claude binary on PATH"      "command -v $CCH_CLAUDE"
+    _check "projects.conf parseable"    "[[ -f $CCH_CONF ]] && _projects >/dev/null"
+    _check "every project path exists"  "_doctor_paths"
+    _check "TERM supports 256color"     "[[ \$TERM == *256* ]] || tput colors | awk '{exit !(\$1>=256)}'"
+    _check "fzf available (optional)"   "command -v fzf"
+    if [[ -d "$HOME/cc-harness" && "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
+        printf "  !  legacy ~/cc-harness/ still present (safe to remove)\n"
+    fi
+    return "$fail"
+}
+_doctor_paths() {
+    local line label path flags tags p
+    while IFS= read -r line; do
+        _lib_assign "$line" || continue
+        p="$(_lib_resolve_path "$path")"
+        [[ -d "$p" ]] || return 1
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+    return 0
+}
+
+_cmd_logs() {
+    local label="${1:-}"
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" logs "usage: logs <label>"
+    _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+        | grep -qx -- "$label" \
+        || _die "$EXIT_TMUX" logs "no window named $label"
+    _tmux capture-pane -t "$CCH_SESSION:$label" -p -S -3000
+}
+
+_cmd_which() {
+    local label="${1:-}"
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" which "usage: which <label>"
+    local line label_dummy path flags tags
+    line="$(_lookup_project "$label")" \
+        || _die "$EXIT_CONFIG" which "no such label: $label"
+    _lib_assign "$line" || _die "$EXIT_CONFIG" which "could not parse: $line"
+    printf "%s\n" "$(_lib_resolve_path "$path")"
+}
+
 _filter_windows_by_tag() {
     local windows="$1" want_tag="$2" out="" line label path flags tags w t base
     while IFS= read -r line; do
@@ -808,6 +905,10 @@ case "$cmd" in
     rename)       _cmd_rename "$@" ;;
     tag)          _cmd_tag "$@" ;;
     untag)        _cmd_untag "$@" ;;
+    status)       _cmd_status "$@" ;;
+    doctor)       _cmd_doctor "$@" ;;
+    logs)         _cmd_logs "$@" ;;
+    which)        _cmd_which "$@" ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
     _parse-line)       _lib_parse "${1:-}" ;;
