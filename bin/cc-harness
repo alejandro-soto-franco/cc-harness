@@ -588,7 +588,7 @@ _cmd_add() {
     _lib_validate_label "$label" || exit "$EXIT_CONFIG"
     _lib_validate_path "$path" || exit "$EXIT_CONFIG"
     local t
-    for t in "${tags[@]}"; do
+    for t in ${tags[@]+"${tags[@]}"}; do
         _lib_validate_tag "$t" || exit "$EXIT_CONFIG"
     done
 
@@ -597,7 +597,7 @@ _cmd_add() {
 
     local line="$label = $path"
     [[ -n "$flags" ]] && line+=" | $flags"
-    for t in "${tags[@]}"; do line+=" #$t"; done
+    for t in ${tags[@]+"${tags[@]}"}; do line+=" #$t"; done
 
     if ((dry)); then
         printf "would append: %s\n" "$line"
@@ -732,11 +732,11 @@ _cmd_tag() {
     _lookup_project "$target" >/dev/null 2>&1 \
         || _die "$EXIT_CONFIG" tag "no such label: $target"
     local op tag
-    for op in "${ops[@]}"; do
+    for op in ${ops[@]+"${ops[@]}"}; do
         tag="${op:1}"
         _lib_validate_tag "$tag" || exit "$EXIT_CONFIG"
     done
-    _lib_with_lock tag _cmd_tag_write "$target" "${ops[@]}"
+    _lib_with_lock tag _cmd_tag_write "$target" ${ops[@]+"${ops[@]}"}
 }
 _cmd_tag_write() {
     local target="$1"
@@ -758,7 +758,7 @@ _cmd_tag_write() {
             printf "%s\n" "$line" >>"$tmp"
             continue
         fi
-        for op in "${ops[@]}"; do
+        for op in ${ops[@]+"${ops[@]}"}; do
             sign="${op:0:1}"
             tag="${op:1}"
             case "$sign" in
