@@ -279,13 +279,76 @@ _spawn() {
     _lib_log "spawn label=$label path=$path"
 }
 
+_lookup_project() {
+    local want="$1" line label path flags tags
+    while IFS= read -r line; do
+        eval "$(_lib_parse "$line" 2>/dev/null)" || continue
+        [[ "$label" == "$want" ]] && { printf "%s\n" "$line"; return 0; }
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
+    return 1
+}
+
 _cmd_new() {
-    local pick label path
-    pick="$(_projects | _pick 'project>')" || return 0
-    [[ -z "${pick:-}" ]] && return 0
-    label="${pick%%=*}"; label="$(printf "%s" "$label" | tr -d '[:space:]')"
-    path="${pick#*=}"
-    _spawn "$label" "$path"
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help 2>/dev/null || _help; return 0; }
+    local mode=ask label=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --fresh)  mode=fresh; shift ;;
+            --switch) mode=switch; shift ;;
+            -*)       _die "$EXIT_USAGE" new "unknown flag: $1" ;;
+            *)        label="$1"; shift ;;
+        esac
+    done
+
+    if [[ -z "$label" ]]; then
+        local pick
+        pick="$(_projects | _pick 'project>')" || return 0
+        [[ -z "${pick:-}" ]] && return 0
+        label="$(printf "%s" "${pick%%=*}" | tr -d '[:space:]')"
+    fi
+
+    # Look up project line.
+    local line; line="$(_lookup_project "$label")" \
+        || _die "$EXIT_CONFIG" new "no such project: $label"
+    local path flags tags
+    eval "$(_lib_parse "$line")"
+
+    local exists=0
+    tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+        | grep -qx -- "$label" && exists=1
+
+    case "$mode" in
+        switch)
+            (( exists )) || _die "$EXIT_TMUX" new "no window for $label"
+            tmux select-window -t "$CCH_SESSION:$label"
+            ;;
+        fresh)
+            local n=2
+            while tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+                | grep -qx -- "$label-$n"; do (( n++ )); done
+            _spawn "$label-$n" "$path" "$flags"
+            ;;
+        ask)
+            if (( exists )); then
+                local ans=""
+                if [[ -t 0 ]]; then
+                    read -r -p "[s]witch / [f]resh / [c]ancel? " ans </dev/tty || ans=""
+                fi
+                case "${ans:-s}" in
+                    s|S|"") tmux select-window -t "$CCH_SESSION:$label" ;;
+                    f|F)
+                        local n=2
+                        while tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+                            | grep -qx -- "$label-$n"; do (( n++ )); done
+                        _spawn "$label-$n" "$path" "$flags"
+                        ;;
+                    *) return 0 ;;
+                esac
+            else
+                _spawn "$label" "$path" "$flags"
+            fi
+            ;;
+    esac
 }
 
 _cmd_kill() {
@@ -432,7 +495,7 @@ case "${1:-attach}" in
         grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
         ;;
     menu)         _cmd_menu ;;
-    new)          _cmd_new ;;
+    new)          shift; _cmd_new "$@" ;;
     kill)         _cmd_kill ;;
     -h|--help)    _help ;;
     _parse-line)      shift; _lib_parse "$1" ;;
