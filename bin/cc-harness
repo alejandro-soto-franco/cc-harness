@@ -265,21 +265,21 @@ _projects() {
         | sed -E 's/[[:space:]]*=[[:space:]]*/=/'
 }
 
-_resolve_path() {
-    local p="$1"; p="${p/#\~/$HOME}"; printf "%s" "$p"
-}
-
 _spawn() {
-    local label="$1" path="$2"
-    path="$(_resolve_path "$path")"
+    local label="$1" path="$2" extra_flags="${3:-}"
+    _lib_validate_label "$label" || exit "$EXIT_CONFIG"
+    path="$(_lib_resolve_path "$path")"
     [[ -d "$path" ]] || _die "$EXIT_CONFIG" spawn "no such dir: $path"
+    _lib_preflight_claude
+    _lib_preflight_tmux
     if _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
         _tmux select-window -t "$CCH_SESSION:$label"
     else
         _tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
-            "$CCH_CLAUDE $CCH_FLAGS"
+            "$CCH_CLAUDE $CCH_FLAGS $extra_flags"
         _tmux select-window -t "$CCH_SESSION:$label"
     fi
+    _lib_log "spawn label=$label path=$path"
 }
 
 _cmd_new() {
