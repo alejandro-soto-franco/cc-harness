@@ -373,6 +373,14 @@ _cmd_attach() {
                        "exec '$CCH_SELF' menu"
         fi
     fi
+    # Stale-window detection: rename windows whose pane PID is dead.
+    while IFS=$'\t' read -r idx wname pid; do
+        [[ "$wname" == menu || "$wname" == \[dead\]* ]] && continue
+        if ! kill -0 "$pid" 2>/dev/null; then
+            tmux rename-window -t "$CCH_SESSION:$idx" "[dead] $wname"
+        fi
+    done < <(tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_pid}' 2>/dev/null)
+
     if [[ -n "${TMUX:-}" ]]; then
         tmux switch-client -t "$CCH_SESSION"
     else
