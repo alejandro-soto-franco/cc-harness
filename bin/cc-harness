@@ -849,7 +849,10 @@ _doctor_paths() {
 }
 
 _cmd_menu() {
+    trap '_redraw_menu=1' INT TERM
+    local _redraw_menu=0
     while true; do
+        if (( _redraw_menu )); then _redraw_menu=0; fi
         clear
         cat <<EOF
 ┌─ cc-harness ─────────────────────────────────────────┐
@@ -912,6 +915,11 @@ _cmd_attach() {
         tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]| "
         tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
         tmux set-option -t "$CCH_SESSION" mouse on
+        tmux bind-key -T prefix 0 \
+            "if-shell '! tmux list-windows -F \"#W\" | grep -qx menu' \
+            'new-window -t :=0 -n menu \"exec $CCH_SELF menu\"' \\; \
+            select-window -t :=0"
+        tmux bind-key -T prefix N run-shell "$CCH_SELF new"
     else
         # Self-heal: if the menu window has been killed, recreate it at index 0.
         if ! tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx menu; then
