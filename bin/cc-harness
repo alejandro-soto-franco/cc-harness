@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+# Allow tests to inject a tmux socket via TMUX_FLAGS (e.g. "-L cch-test-42").
+# Wrapping tmux in a function means every call in this script is socket-aware
+# without changing individual call sites.
+tmux() { command tmux ${TMUX_FLAGS:-} "$@"; }
+
 CCH_HOME="${CCH_HOME:-$HOME/cc-harness}"
 CCH_CONF="$CCH_HOME/projects.conf"
 CCH_SESSION="${CCH_SESSION:-cc-harness}"
@@ -169,6 +174,14 @@ _cmd_attach() {
         tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
         tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
         tmux set-option -t "$CCH_SESSION" mouse on
+    else
+        # Self-heal: if the menu window has been killed, recreate it at index 0.
+        if ! tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx menu; then
+            tmux new-window -t "$CCH_SESSION:0" -n menu \
+                "exec '$CCH_SELF' menu" 2>/dev/null \
+                || tmux new-window -t "$CCH_SESSION:" -n menu \
+                       "exec '$CCH_SELF' menu"
+        fi
     fi
     if [[ -n "${TMUX:-}" ]]; then
         tmux switch-client -t "$CCH_SESSION"
