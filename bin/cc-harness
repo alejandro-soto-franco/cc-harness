@@ -691,6 +691,104 @@ _cmd_status() {
     done <<< "$windows"
 }
 
+_cmd_completion() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help completion 2>/dev/null || _help; return 0; }
+    case "${1:-}" in
+        bash) _emit_bash_completion ;;
+        zsh)  _emit_zsh_completion ;;
+        fish) _emit_fish_completion ;;
+        *) _die "$EXIT_USAGE" completion "usage: completion <bash|zsh|fish>" ;;
+    esac
+}
+
+_emit_bash_completion() {
+cat <<'BASHEOF'
+# cc-harness bash completion
+_cc_harness() {
+    local cur prev cmds
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    cmds="attach new kill list add remove rename tag untag status doctor logs which completion install uninstall version --version --help -h"
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$cmds" -- "$cur") )
+        return 0
+    fi
+    case "$prev" in
+        new|kill|logs|which|rename|remove|tag|untag)
+            local labels
+            labels=$(cc-harness list 2>/dev/null | awk 'NR>1 {print $1}')
+            COMPREPLY=( $(compgen -W "$labels" -- "$cur") )
+            ;;
+        --tag)
+            local tags
+            tags=$(cc-harness list --tags 2>/dev/null | awk '{sub(/^#/,"",$1); print $1}')
+            COMPREPLY=( $(compgen -W "$tags" -- "$cur") )
+            ;;
+        completion)
+            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            ;;
+    esac
+}
+complete -F _cc_harness cc-harness
+BASHEOF
+}
+
+_emit_zsh_completion() {
+cat <<'ZSHEOF'
+#compdef cc-harness
+_cc_harness() {
+    local -a cmds
+    cmds=(
+        'attach:attach the harness session'
+        'new:spawn a new claude session'
+        'kill:kill an existing claude session'
+        'list:list configured projects'
+        'add:add a project'
+        'remove:remove a project'
+        'rename:rename a project'
+        'tag:add/remove tags on a project'
+        'untag:strip all tags from a project'
+        'status:show running session status'
+        'doctor:run environment checks'
+        'logs:capture pane output for a project'
+        'which:print resolved path of a project'
+        'completion:emit shell completion'
+        'version:print version'
+    )
+    if (( CURRENT == 2 )); then
+        _describe 'command' cmds
+    else
+        case "$words[2]" in
+            new|kill|logs|which|rename|remove|tag|untag)
+                local -a labels
+                labels=(${(f)"$(cc-harness list 2>/dev/null | awk 'NR>1 {print $1}')"})
+                _describe 'project' labels ;;
+            completion)
+                _arguments '*:shell:(bash zsh fish)' ;;
+        esac
+    fi
+}
+_cc_harness "$@"
+ZSHEOF
+}
+
+_emit_fish_completion() {
+cat <<'FISHEOF'
+# cc-harness fish completion
+function __cch_labels
+    cc-harness list 2>/dev/null | awk 'NR>1 {print $1}'
+end
+function __cch_tags
+    cc-harness list --tags 2>/dev/null | awk '{sub(/^#/,"",$1); print $1}'
+end
+complete -c cc-harness -f -n '__fish_use_subcommand' -a 'attach new kill list add remove rename tag untag status doctor logs which completion version'
+complete -c cc-harness -n '__fish_seen_subcommand_from new kill logs which rename remove tag untag' -a '(__cch_labels)'
+complete -c cc-harness -l tag -a '(__cch_tags)'
+complete -c cc-harness -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+FISHEOF
+}
+
 _cmd_which() {
     [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help which 2>/dev/null || _help; return 0; }
     local label="${1:-}"
@@ -901,6 +999,7 @@ case "${1:-attach}" in
     remove)       shift; _cmd_remove "$@" ;;
     rename)       shift; _cmd_rename "$@" ;;
     status)       shift; _cmd_status "$@" ;;
+    completion)   shift; _cmd_completion "$@" ;;
     which)        shift; _cmd_which "$@" ;;
     logs)         shift; _cmd_logs "$@" ;;
     doctor)       shift; _cmd_doctor "$@" ;;
