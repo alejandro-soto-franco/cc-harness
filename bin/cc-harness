@@ -43,6 +43,31 @@ _lib_paths() {
     CCH_MIGRATED_MARKER="$CCH_STATE_DIR/.migrated-from-legacy"
 }
 
+_lib_migrate() {
+    local legacy_dir="$HOME/cc-harness"
+    local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}/cc-harness"
+
+    [[ -n "${CCH_HOME:-}" ]] && return 0
+    [[ -f "$legacy_dir/projects.conf" ]] || return 0
+    [[ -f "$CCH_MIGRATED_MARKER" ]] && return 0
+    [[ -f "$xdg_config/projects.conf" ]] && return 0
+
+    local xdg_state="${XDG_STATE_HOME:-$HOME/.local/state}/cc-harness"
+    mkdir -p "$xdg_config" "$xdg_state"
+    cp -p "$legacy_dir/projects.conf" "$xdg_config/projects.conf"
+    CCH_STATE_DIR="$xdg_state"
+    CCH_MIGRATED_MARKER="$xdg_state/.migrated-from-legacy"
+    CCH_LOG="$xdg_state/cc-harness.log"
+    : > "$CCH_MIGRATED_MARKER"
+
+    {
+        echo "cc-harness: migrated config from ~/cc-harness/ to $xdg_config/"
+        echo "cc-harness: legacy ~/cc-harness/ left in place; remove when ready"
+    } >&2
+
+    CCH_CONF="$xdg_config/projects.conf"
+}
+
 _have() { command -v "$1" >/dev/null 2>&1; }
 
 _seed_conf() {
@@ -243,8 +268,12 @@ EOF
 }
 
 _lib_paths
+_lib_migrate
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
+    list)
+        grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null || true
+        ;;
     menu)         _cmd_menu ;;
     new)          _cmd_new ;;
     kill)         _cmd_kill ;;
