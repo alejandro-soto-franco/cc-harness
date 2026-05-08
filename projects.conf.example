@@ -1,0 +1,7 @@
+# cc-harness projects — one per line, "label = path [| flags] [#tag1 #tag2]"
+# Lines starting with # are comments. ~ expands to $HOME.
+# All suffixes (| flags, #tags) are optional.
+
+example      = ~/code/example
+docs         = ~/Documents | --model opus     #writing
+scratch      = ~                                #scratch

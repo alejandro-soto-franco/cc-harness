@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# cc-harness — multi-session Claude Code launcher
+# https://github.com/alejandro-soto-franco/cc-harness
+# Usage: cc-harness            # attach (creating the session if needed)
+#        cc-harness new        # spawn a new claude session and attach to it
+#        cc-harness kill       # pick a session window to kill
+#        cc-harness --help
+
+set -euo pipefail
+
+CCH_HOME="${CCH_HOME:-$HOME/cc-harness}"
+CCH_CONF="$CCH_HOME/projects.conf"
+CCH_SESSION="${CCH_SESSION:-cc-harness}"
+CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
+CCH_CLAUDE="${CCH_CLAUDE:-claude}"
+CCH_SELF="$(readlink -f "$0")"
+
+_have() { command -v "$1" >/dev/null 2>&1; }
+
+_seed_conf() {
+    mkdir -p "$CCH_HOME"
+    cat > "$CCH_CONF" <<'EOF'
+# cc-harness projects — one per line, "label = path"
+# Lines starting with # are comments. ~ expands to $HOME.
+# Order shown in menu = order here. Edit freely; takes effect immediately.
+
+polybius     = ~/Polybius
+polybius-ca  = ~/asf-capital
+pmp          = ~/pmp
+stratum      = ~/stratum
+fleming      = ~/fleming
+nse          = ~/3d-navier-stokes
+landscape    = ~/governing-landscape
+tactic       = ~/tactic-ranker
+job-hub      = ~/job-hub
+lemma        = ~/lemma
+malliavin    = ~/malliavin
+home         = ~
+EOF
+}
+
+_pick() {
+    # $1 = prompt label; stdin = newline-separated items; stdout = chosen item
+    local prompt="$1"
+    if _have fzf; then
+        fzf --prompt="$prompt " --height=40% --reverse --border --no-info --no-mouse
+    else
+        local items=() line
+        while IFS= read -r line; do items+=("$line"); done
+        local i=0
+        for line in "${items[@]}"; do printf "  %2d) %s\n" "$((++i))" "$line" >&2; done
+        printf "%s " "$prompt" >&2
+        local n; read -r n </dev/tty
+        if [[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 && n <= ${#items[@]} )); then
+            printf "%s\n" "${items[$((n-1))]}"
+        fi
+    fi
+}
+
+_projects() {
+    grep -vE '^\s*(#|$)' "$CCH_CONF" \
+        | sed -E 's/[[:space:]]*=[[:space:]]*/=/'
+}
+
+_resolve_path() {
+    local p="$1"; p="${p/#\~/$HOME}"; printf "%s" "$p"
+}
+
+_spawn() {
+    local label="$1" path="$2"
+    path="$(_resolve_path "$path")"
+    if [[ ! -d "$path" ]]; then
+        printf "cc-harness: no such dir: %s\n" "$path" >&2
+        sleep 1.5
+        return 1
+    fi
+    if tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
+        tmux select-window -t "$CCH_SESSION:$label"
+    else
+        tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
+            "$CCH_CLAUDE $CCH_FLAGS"
+        tmux select-window -t "$CCH_SESSION:$label"
+    fi
+}
+
+_cmd_new() {
+    local pick label path
+    pick="$(_projects | _pick 'project>')" || return 0
+    [[ -z "${pick:-}" ]] && return 0
+    label="${pick%%=*}"; label="$(printf "%s" "$label" | tr -d '[:space:]')"
+    path="${pick#*=}"
+    _spawn "$label" "$path"
+}
+
+_cmd_kill() {
+    local windows pick
+    windows="$(tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -vx menu || true)"
+    if [[ -z "$windows" ]]; then
+        printf "(no sessions to kill)\n" >&2
+        sleep 1
+        return
+    fi
+    pick="$(printf "%s\n" "$windows" | _pick 'kill>')" || return 0
+    [[ -z "${pick:-}" ]] && return 0
+    printf "kill window '%s'? [y/N] " "$pick" >&2
+    local ans; read -r ans </dev/tty
+    [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
+    tmux kill-window -t "$CCH_SESSION:$pick"
+}
+
+_cmd_menu() {
+    while true; do
+        clear
+        cat <<EOF
+┌─ cc-harness ─────────────────────────────────────────┐
+│  multi-session Claude Code launcher                  │
+│  flags: $CCH_FLAGS
+└──────────────────────────────────────────────────────┘
+
+Active sessions:
+EOF
+        local windows
+        windows="$(tmux list-windows -t "$CCH_SESSION" \
+            -F '  [#I] #W  →  #{pane_current_path}' 2>/dev/null \
+            | grep -vE '\] menu  ' || true)"
+        if [[ -z "$windows" ]]; then
+            echo "  (none — pick 'new' to start one)"
+        else
+            echo "$windows"
+        fi
+        cat <<'EOF'
+
+Tmux keys (Ctrl-b is the prefix):
+  prefix + 0       jump back to this menu
+  prefix + 1..9    jump to session window N
+  prefix + n / p   next / prev window
+  prefix + w       interactive window list
+  prefix + d       detach (sessions keep running)
+
+EOF
+        local action
+        action="$(printf "new\nkill\nedit projects.conf\ndetach\nquit (kill harness)\n" \
+            | _pick 'cc-harness>')" || action="detach"
+        case "$action" in
+            new)                 _cmd_new ;;
+            kill)                _cmd_kill ;;
+            "edit projects.conf") "${EDITOR:-vi}" "$CCH_CONF" ;;
+            detach)              tmux detach-client; return ;;
+            "quit (kill harness)")
+                printf "kill the entire harness session and all running claudes? [y/N] " >&2
+                local ans; read -r ans </dev/tty
+                if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
+                    tmux kill-session -t "$CCH_SESSION"
+                    exit 0
+                fi
+                ;;
+            *) ;;
+        esac
+    done
+}
+
+_cmd_attach() {
+    [[ -f "$CCH_CONF" ]] || _seed_conf
+    if ! tmux has-session -t "$CCH_SESSION" 2>/dev/null; then
+        tmux new-session -d -s "$CCH_SESSION" -n menu \
+            "exec '$CCH_SELF' menu"
+        tmux set-option -t "$CCH_SESSION" status-style "bg=colour236,fg=colour250"
+        tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
+        tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
+        tmux set-option -t "$CCH_SESSION" mouse on
+    fi
+    if [[ -n "${TMUX:-}" ]]; then
+        tmux switch-client -t "$CCH_SESSION"
+    else
+        tmux attach-session -t "$CCH_SESSION"
+    fi
+}
+
+_help() {
+    cat <<EOF
+cc-harness — Claude Code multi-session launcher
+
+Usage: cc-harness [command]
+  (no args)    launch / attach the harness tmux session
+  new          spawn a new claude session (project picker)
+  kill         kill an existing claude session
+  menu         (internal) run the menu loop in window 0
+  -h, --help   show this help
+
+Config:
+  $CCH_CONF        edit to add or remove projects
+Env:
+  CCH_FLAGS        flags passed to claude on every spawn
+                   (default: --dangerously-skip-permissions)
+  CCH_HOME         override harness dir (default: ~/cc-harness)
+  CCH_SESSION      tmux session name (default: cc-harness)
+  CCH_CLAUDE       path to the claude binary (default: claude on PATH)
+
+Inside the harness (Ctrl-b is the tmux prefix):
+  prefix + 0       menu window
+  prefix + 1..9    session N
+  prefix + w       interactive window list
+  prefix + d       detach
+  prefix + ,       rename current window
+  prefix + &       kill current window (close that claude session)
+EOF
+}
+
+case "${1:-attach}" in
+    attach|"")    _cmd_attach ;;
+    menu)         _cmd_menu ;;
+    new)          _cmd_new ;;
+    kill)         _cmd_kill ;;
+    -h|--help)    _help ;;
+    *)
+        printf "cc-harness: unknown command: %s\n" "$1" >&2
+        _help >&2
+        exit 2
+        ;;
+esac
