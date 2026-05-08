@@ -1,0 +1,4 @@
+[submodule "tests/bats"]
+	path = tests/bats
+	url = https://github.com/bats-core/bats-core
+	branch = v1.11.0
