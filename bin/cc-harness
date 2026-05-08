@@ -77,6 +77,41 @@ _lib_migrate() {
 
 _have() { command -v "$1" >/dev/null 2>&1; }
 
+# Parse one config line into key=value records on stdout.
+# Schema: "label = path [| flags] [#tag1 #tag2 ...]"
+# Returns 1 on blank/comment lines.
+_lib_parse() {
+    local line="$1" label rest path flags tags
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$line" || "$line" == \#* ]] && return 1
+
+    label="${line%%=*}"
+    label="${label%"${label##*[![:space:]]}"}"
+    rest="${line#*=}"
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+
+    tags=""
+    while [[ "$rest" =~ [[:space:]]\#([a-zA-Z0-9_-]+)[[:space:]]*$ ]]; do
+        tags="${BASH_REMATCH[1]} $tags"
+        rest="${rest% \#${BASH_REMATCH[1]}*}"
+        rest="${rest%"${rest##*[![:space:]]}"}"
+    done
+    tags="${tags% }"
+
+    if [[ "$rest" == *"|"* ]]; then
+        flags="${rest#*|}"
+        flags="${flags#"${flags%%[![:space:]]*}"}"
+        flags="${flags%"${flags##*[![:space:]]}"}"
+        path="${rest%%|*}"
+        path="${path%"${path##*[![:space:]]}"}"
+    else
+        path="${rest%"${rest##*[![:space:]]}"}"
+        flags=""
+    fi
+
+    printf "label=%s\npath=%s\nflags=%s\ntags=%s\n" "$label" "$path" "$flags" "$tags"
+}
+
 _seed_conf() {
     mkdir -p "$(dirname "$CCH_CONF")"
     cat > "$CCH_CONF" <<'EOF'
@@ -275,8 +310,9 @@ EOF
 }
 
 _lib_paths
-# Skip migration for read-only debug commands so they don't mutate state.
-case "${1:-}" in _debug-*) ;; *) _lib_migrate ;; esac
+# Skip migration for hidden/debug commands (underscore-prefixed) so they
+# don't mutate state during introspection.
+case "${1:-}" in _*) ;; *) _lib_migrate ;; esac
 
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
@@ -288,6 +324,7 @@ case "${1:-attach}" in
         ;;
     _debug-paths) printf "config=%s\nstate=%s\nlock=%s\n" \
                       "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK" ;;
+    _parse-line)  shift; _lib_parse "$1" ;;
     -h|--help)    _help ;;
     *)
         printf "cc-harness: unknown command: %s\n" "$1" >&2
