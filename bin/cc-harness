@@ -525,6 +525,52 @@ _cmd_remove_write() {
     mv "$tmp" "$CCH_CONF"
 }
 
+_cmd_rename() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help rename 2>/dev/null || _help; return 0; }
+    local old="" new="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run) dry=1; shift ;;
+            -*) _die "$EXIT_USAGE" rename "unknown flag: $1" ;;
+            *)
+                if [[ -z "$old" ]]; then old="$1"
+                elif [[ -z "$new" ]]; then new="$1"
+                else _die "$EXIT_USAGE" rename "too many args: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    [[ -n "$old" && -n "$new" ]] \
+        || _die "$EXIT_USAGE" rename "usage: rename <old> <new>"
+    _lib_validate_label "$new" || exit "$EXIT_CONFIG"
+    _lookup_project "$old" >/dev/null 2>&1 \
+        || _die "$EXIT_CONFIG" rename "no such label: $old"
+    _lookup_project "$new" >/dev/null 2>&1 \
+        && _die "$EXIT_CONFIG" rename "target label already exists: $new"
+    if (( dry )); then printf "would rename: %s -> %s\n" "$old" "$new"; return 0; fi
+
+    _lib_with_lock rename _cmd_rename_write "$old" "$new"
+    if tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$old"; then
+        tmux rename-window -t "$CCH_SESSION:$old" "$new"
+    fi
+}
+_cmd_rename_write() {
+    local old="$1" new="$2" tmp; tmp="$(mktemp)"
+    awk -v o="$old" -v n="$new" '
+        /^[[:space:]]*(#|$)/ { print; next }
+        {
+            split($0, a, "=")
+            label=a[1]; gsub(/^[ \t]+|[ \t]+$/, "", label)
+            if (label == o) {
+                rest=substr($0, index($0, "=")+1)
+                printf "%s =%s\n", n, rest
+            } else print
+        }
+    ' "$CCH_CONF" > "$tmp"
+    mv "$tmp" "$CCH_CONF"
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -652,6 +698,7 @@ case "${1:-attach}" in
     list)         shift; _cmd_list "$@" ;;
     add)          shift; _cmd_add "$@" ;;
     remove)       shift; _cmd_remove "$@" ;;
+    rename)       shift; _cmd_rename "$@" ;;
     menu)         _cmd_menu ;;
     new)          shift; _cmd_new "$@" ;;
     kill)         shift; _cmd_kill "$@" ;;
