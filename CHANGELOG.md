@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-08
+
+### Fixed
+
+- macOS portability: `_lib_with_lock` no longer depends on `flock(1)`,
+  which is util-linux only and not present on macOS by default. Locking
+  is now done with an atomic `mkdir`-based mutex on the lockfile path,
+  with stale-lock reaping after 60 seconds.
+- bash 3.2 portability: `_cmd_add` and `_cmd_tag` array dereferences
+  switched to `${arr[@]+"${arr[@]}"}` so empty arrays under `set -u`
+  do not trigger "unbound variable" on macOS system bash.
+- `cc-harness doctor`: `TERM supports 256color` and `fzf available` are
+  now truly optional (reported but never increment the failure count).
+  Headless CI runners with `TERM=dumb` no longer flag a doctor failure.
+
 ## [0.1.0] - 2026-05-08
 
 ### Added
@@ -49,5 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Menu window vanishing was permanent: once `Ctrl-b &` killed it, no
   invocation recreated it. `cc-harness attach` now self-heals window 0.
 
-[Unreleased]: https://github.com/alejandro-soto-franco/cc-harness/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/alejandro-soto-franco/cc-harness/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/alejandro-soto-franco/cc-harness/releases/tag/v0.1.1
 [0.1.0]: https://github.com/alejandro-soto-franco/cc-harness/releases/tag/v0.1.0
