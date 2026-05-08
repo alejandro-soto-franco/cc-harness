@@ -847,14 +847,23 @@ _cmd_doctor() {
             fail=$((fail + 1))
         fi
     }
+    _check_optional() {
+        # Reports OK or "-- not found"; never increments fail.
+        local name="$1" cmd="$2"
+        if eval "$cmd" >/dev/null 2>&1; then
+            printf "  OK %s\n" "$name"
+        else
+            printf "  -  %s (optional, not found)\n" "$name"
+        fi
+    }
     printf "cc-harness doctor:\n"
     _check "tmux installed" "command -v tmux"
     _check "tmux >= 3.0" "tmux -V | awk '{print \$2}' | tr -d '[:alpha:]' | awk '{exit !(\$1+0 >= 3.0)}'"
     _check "claude binary on PATH" "command -v $CCH_CLAUDE"
     _check "projects.conf parseable" "[[ -f $CCH_CONF ]] && _projects >/dev/null"
     _check "every project path exists" "_doctor_paths"
-    _check "TERM supports 256color" "[[ \$TERM == *256* ]] || tput colors | awk '{exit !(\$1>=256)}'"
-    _check "fzf available (optional)" "command -v fzf"
+    _check_optional "TERM supports 256color" "[[ \$TERM == *256* ]] || tput colors 2>/dev/null | awk '{exit !(\$1+0>=256)}'"
+    _check_optional "fzf available" "command -v fzf"
     if [[ -f "$HOME/cc-harness/projects.conf" &&
         "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
         printf "  !  legacy ~/cc-harness/projects.conf still present (safe to remove)\n"
