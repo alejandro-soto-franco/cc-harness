@@ -646,6 +646,51 @@ _cmd_untag_write() {
     mv "$tmp" "$CCH_CONF"
 }
 
+_cmd_status() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help status 2>/dev/null || _help; return 0; }
+    local json=0 tag=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json=1; shift ;;
+            --tag)  tag="$2"; shift 2 ;;
+            *) _die "$EXIT_USAGE" status "unknown flag: $1" ;;
+        esac
+    done
+    local version="${CCH_VERSION:-0.1.0}"
+    local claude_path; claude_path="$(command -v "$CCH_CLAUDE" 2>/dev/null || echo "(missing)")"
+    local claude_ver=""
+    if [[ -x "$claude_path" ]]; then
+        claude_ver="$("$claude_path" --version 2>/dev/null | head -1)"
+    fi
+    local windows
+    windows="$(tmux list-windows -t "$CCH_SESSION" -F '#I	#W	#{pane_current_path}	#{pane_pid}' 2>/dev/null || true)"
+
+    if (( json )); then
+        printf '{"version":"%s","session":"%s","claude":"%s","windows":[' \
+            "$version" "$CCH_SESSION" "$claude_path"
+        local first=1
+        while IFS=$'\t' read -r idx wname cwd pid; do
+            [[ -z "$wname" ]] && continue
+            (( first )) || printf ","
+            first=0
+            printf '{"index":%s,"name":"%s","cwd":"%s","pid":%s}' \
+                "$idx" "$wname" "$cwd" "$pid"
+        done <<< "$windows"
+        printf ']}\n'
+        return 0
+    fi
+
+    printf "cc-harness %s  session=%s\n" "$version" "$CCH_SESSION"
+    printf "claude: %s %s\n" "$claude_path" "$claude_ver"
+    printf "host uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
+    printf "log: %s\n" "${CCH_LOG}"
+    printf "\nwindows:\n"
+    while IFS=$'\t' read -r idx wname cwd pid; do
+        [[ -z "$wname" ]] && continue
+        printf "  [%s] %-16s pid=%s  cwd=%s\n" "$idx" "$wname" "$pid" "$cwd"
+    done <<< "$windows"
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -774,6 +819,7 @@ case "${1:-attach}" in
     add)          shift; _cmd_add "$@" ;;
     remove)       shift; _cmd_remove "$@" ;;
     rename)       shift; _cmd_rename "$@" ;;
+    status)       shift; _cmd_status "$@" ;;
     tag)          shift; _cmd_tag "$@" ;;
     untag)        shift; _cmd_untag "$@" ;;
     menu)         _cmd_menu ;;
