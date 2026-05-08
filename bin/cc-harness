@@ -352,19 +352,58 @@ _cmd_new() {
 }
 
 _cmd_kill() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help kill 2>/dev/null || _help; return 0; }
+    local all=0 tag="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all)      all=1; shift ;;
+            --tag)      tag="$2"; shift 2 ;;
+            --dry-run)  dry=1; shift ;;
+            *) _die "$EXIT_USAGE" kill "unknown flag: $1" ;;
+        esac
+    done
     local windows pick
-    windows="$(tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -vx menu || true)"
+    windows="$(tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+        | grep -vx menu || true)"
     if [[ -z "$windows" ]]; then
-        printf "(no sessions to kill)\n" >&2
-        sleep 1
-        return
+        printf "(no sessions to kill)\n" >&2; return 0
+    fi
+    if [[ -n "$tag" ]]; then
+        windows="$(_filter_windows_by_tag "$windows" "$tag")"
+        [[ -z "$windows" ]] && { printf "(no sessions match tag #%s)\n" "$tag" >&2; return 0; }
+    fi
+    if (( all )); then
+        while IFS= read -r w; do
+            (( dry )) && { printf "would kill: %s\n" "$w"; continue; }
+            tmux kill-window -t "$CCH_SESSION:$w"
+        done <<< "$windows"
+        return 0
     fi
     pick="$(printf "%s\n" "$windows" | _pick 'kill>')" || return 0
     [[ -z "${pick:-}" ]] && return 0
+    if (( dry )); then printf "would kill: %s\n" "$pick"; return 0; fi
+    [[ -t 0 ]] || { tmux kill-window -t "$CCH_SESSION:$pick"; return 0; }
     printf "kill window '%s'? [y/N] " "$pick" >&2
     local ans; read -r ans </dev/tty
     [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
     tmux kill-window -t "$CCH_SESSION:$pick"
+}
+
+_filter_windows_by_tag() {
+    local windows="$1" want_tag="$2" out=""
+    local cc_label cc_path cc_flags cc_tags
+    while IFS= read -r line; do
+        cc_label="" cc_path="" cc_flags="" cc_tags=""
+        eval "$(CCH_PARSE_PREFIX=cc_ _lib_parse "$line" 2>/dev/null)" || continue
+        for w in $windows; do
+            local base="${w%-[0-9]*}"
+            [[ "$base" == "$cc_label" ]] || continue
+            for t in $cc_tags; do
+                [[ "${t,,}" == "${want_tag,,}" ]] && out+="$w"$'\n'
+            done
+        done
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
+    printf "%s" "${out%$'\n'}"
 }
 
 _cmd_menu() {
@@ -496,7 +535,7 @@ case "${1:-attach}" in
         ;;
     menu)         _cmd_menu ;;
     new)          shift; _cmd_new "$@" ;;
-    kill)         _cmd_kill ;;
+    kill)         shift; _cmd_kill "$@" ;;
     -h|--help)    _help ;;
     _parse-line)      shift; _lib_parse "$1" ;;
     _validate-label)  shift; _lib_validate_label "$1" ;;
