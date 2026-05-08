@@ -16,6 +16,11 @@ CCH_SESSION="${CCH_SESSION:-cc-harness}"
 CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
 CCH_CLAUDE="${CCH_CLAUDE:-claude}"
 CCH_SELF="$(readlink -f "$0")"
+TMUX_FLAGS="${TMUX_FLAGS:-}"
+
+# Wrapper so tests (and advanced users) can target an isolated tmux server
+# via TMUX_FLAGS (e.g. "-L cch-test-1234"). Empty in normal use.
+_tmux() { tmux $TMUX_FLAGS "$@"; }
 
 _have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -76,12 +81,12 @@ _spawn() {
         sleep 1.5
         return 1
     fi
-    if tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
-        tmux select-window -t "$CCH_SESSION:$label"
+    if _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx -- "$label"; then
+        _tmux select-window -t "$CCH_SESSION:$label"
     else
-        tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
+        _tmux new-window -t "$CCH_SESSION:" -n "$label" -c "$path" \
             "$CCH_CLAUDE $CCH_FLAGS"
-        tmux select-window -t "$CCH_SESSION:$label"
+        _tmux select-window -t "$CCH_SESSION:$label"
     fi
 }
 
@@ -96,7 +101,7 @@ _cmd_new() {
 
 _cmd_kill() {
     local windows pick
-    windows="$(tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -vx menu || true)"
+    windows="$(_tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -vx menu || true)"
     if [[ -z "$windows" ]]; then
         printf "(no sessions to kill)\n" >&2
         sleep 1
@@ -107,7 +112,7 @@ _cmd_kill() {
     printf "kill window '%s'? [y/N] " "$pick" >&2
     local ans; read -r ans </dev/tty
     [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
-    tmux kill-window -t "$CCH_SESSION:$pick"
+    _tmux kill-window -t "$CCH_SESSION:$pick"
 }
 
 _cmd_menu() {
@@ -122,7 +127,7 @@ _cmd_menu() {
 Active sessions:
 EOF
         local windows
-        windows="$(tmux list-windows -t "$CCH_SESSION" \
+        windows="$(_tmux list-windows -t "$CCH_SESSION" \
             -F '  [#I] #W  →  #{pane_current_path}' 2>/dev/null \
             | grep -vE '\] menu  ' || true)"
         if [[ -z "$windows" ]]; then
@@ -147,12 +152,12 @@ EOF
             new)                 _cmd_new ;;
             kill)                _cmd_kill ;;
             "edit projects.conf") "${EDITOR:-vi}" "$CCH_CONF" ;;
-            detach)              tmux detach-client; return ;;
+            detach)              _tmux detach-client; return ;;
             "quit (kill harness)")
                 printf "kill the entire harness session and all running claudes? [y/N] " >&2
                 local ans; read -r ans </dev/tty
                 if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
-                    tmux kill-session -t "$CCH_SESSION"
+                    _tmux kill-session -t "$CCH_SESSION"
                     exit 0
                 fi
                 ;;
@@ -163,18 +168,26 @@ EOF
 
 _cmd_attach() {
     [[ -f "$CCH_CONF" ]] || _seed_conf
-    if ! tmux has-session -t "$CCH_SESSION" 2>/dev/null; then
-        tmux new-session -d -s "$CCH_SESSION" -n menu \
+    if ! _tmux has-session -t "$CCH_SESSION" 2>/dev/null; then
+        _tmux new-session -d -s "$CCH_SESSION" -n menu \
             "exec '$CCH_SELF' menu"
-        tmux set-option -t "$CCH_SESSION" status-style "bg=colour236,fg=colour250"
-        tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
-        tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
-        tmux set-option -t "$CCH_SESSION" mouse on
+        _tmux set-option -t "$CCH_SESSION" status-style "bg=colour236,fg=colour250"
+        _tmux set-option -t "$CCH_SESSION" status-left  "#[bold] cc-harness #[default]│ "
+        _tmux set-option -t "$CCH_SESSION" status-right "#(date +%H:%M) "
+        _tmux set-option -t "$CCH_SESSION" mouse on
+    else
+        # Self-heal: if the menu window has been killed, recreate it at index 0.
+        if ! _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -qx menu; then
+            _tmux new-window -t "$CCH_SESSION:0" -n menu \
+                "exec '$CCH_SELF' menu" 2>/dev/null \
+                || _tmux new-window -t "$CCH_SESSION:" -n menu \
+                       "exec '$CCH_SELF' menu"
+        fi
     fi
     if [[ -n "${TMUX:-}" ]]; then
-        tmux switch-client -t "$CCH_SESSION"
+        _tmux switch-client -t "$CCH_SESSION"
     else
-        tmux attach-session -t "$CCH_SESSION"
+        _tmux attach-session -t "$CCH_SESSION"
     fi
 }
 
