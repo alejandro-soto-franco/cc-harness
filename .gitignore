@@ -19,3 +19,6 @@ SHA256SUMS
 *.swp
 *~
 .DS_Store
+
+# Claude Code agent scratch (worktrees, local settings)
+.claude/
