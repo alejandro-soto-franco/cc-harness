@@ -170,10 +170,13 @@ _lib_log() {
 
 _lib_with_lock() {
     # _lib_with_lock <subcmd> <function-to-run> [args...]
+    # Acquires an exclusive non-blocking flock on CCH_LOCK (fd 9) for the
+    # duration of the wrapped function call; releases on return or shell exit.
     local subcmd="$1" fn="$2"; shift 2
     mkdir -p "$(dirname "$CCH_LOCK")"
     exec 9>"$CCH_LOCK" || _die "$EXIT_GENERIC" "$subcmd" "could not open lockfile $CCH_LOCK"
     if ! flock -n 9; then
+        exec 9>&-
         _die "$EXIT_GENERIC" "$subcmd" "another cc-harness is mutating config (lock held)"
     fi
     "$fn" "$@"
