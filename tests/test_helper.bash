@@ -48,6 +48,6 @@ wait_for_window() {
         | grep -qx -- "$name"; do
         (( elapsed >= timeout * 10 )) && return 1
         sleep 0.1
-        (( elapsed++ ))
+        elapsed=$((elapsed + 1))
     done
 }
