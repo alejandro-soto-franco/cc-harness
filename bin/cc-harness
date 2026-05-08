@@ -126,6 +126,34 @@ _lib_parse() {
         "$prefix" "$label" "$prefix" "$path" "$prefix" "$flags" "$prefix" "$tags"
 }
 
+_lib_validate_label() {
+    local label="$1"
+    [[ -z "$label" ]] && { echo "cc-harness: label cannot be empty" >&2; return 3; }
+    (( ${#label} > 32 )) && { echo "cc-harness: label too long (max 32)" >&2; return 3; }
+    [[ "$label" =~ ^[a-zA-Z0-9_-]+$ ]] || {
+        echo "cc-harness: label must match [a-zA-Z0-9_-]+" >&2; return 3; }
+    return 0
+}
+
+_lib_validate_tag() {
+    local tag="$1"
+    [[ -z "$tag" ]] && { echo "cc-harness: tag cannot be empty" >&2; return 3; }
+    (( ${#tag} > 24 )) && { echo "cc-harness: tag too long (max 24)" >&2; return 3; }
+    [[ "$tag" =~ ^[a-zA-Z0-9_-]+$ ]] || {
+        echo "cc-harness: tag must match [a-zA-Z0-9_-]+" >&2; return 3; }
+    return 0
+}
+
+_lib_resolve_path() {
+    local p="$1"; p="${p/#\~/$HOME}"; printf "%s" "$p"
+}
+
+_lib_validate_path() {
+    local p; p="$(_lib_resolve_path "$1")"
+    [[ -d "$p" ]] || { echo "cc-harness: not a directory: $p" >&2; return 3; }
+    return 0
+}
+
 _have() { command -v "$1" >/dev/null 2>&1; }
 
 _seed_conf() {
@@ -334,7 +362,10 @@ case "${1:-attach}" in
     new)          _cmd_new ;;
     kill)         _cmd_kill ;;
     -h|--help)    _help ;;
-    _parse-line) shift; _lib_parse "$1" ;;
+    _parse-line)      shift; _lib_parse "$1" ;;
+    _validate-label)  shift; _lib_validate_label "$1" ;;
+    _validate-tag)    shift; _lib_validate_tag "$1" ;;
+    _validate-path)   shift; _lib_validate_path "$1" ;;
     _debug-paths)
         printf "config=%s\nstate=%s\nlock=%s\n" \
             "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK"
