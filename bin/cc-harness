@@ -17,7 +17,7 @@ CCH_SELF="$(readlink -f "$0")"
 TMUX_FLAGS="${TMUX_FLAGS:-}"
 CCH_VERBOSE="${CCH_VERBOSE:-0}"
 CCH_QUIET="${CCH_QUIET:-0}"
-readonly CCH_VERSION="0.1.0"
+readonly CCH_VERSION="0.1.1"
 
 # shellcheck disable=SC2034 # public exit-code surface; some kept for users
 readonly EXIT_OK=0
