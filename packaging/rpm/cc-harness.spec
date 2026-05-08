@@ -1,7 +1,7 @@
 %global goipath github.com/alejandro-soto-franco/cc-harness
 
 Name:           cc-harness
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Multi-session Claude Code launcher backed by tmux
 
@@ -51,5 +51,9 @@ make install \
 %{_datadir}/%{name}/projects.conf.example
 
 %changelog
+* Fri May 08 2026 Alejandro Soto Franco <sotofranco.eng@gmail.com> - 0.1.1-1
+- macOS portability fixes (mkdir-based mutex, bash 3.2 array safety,
+  doctor optional checks).
+
 * Fri May 08 2026 Alejandro Soto Franco <sotofranco.eng@gmail.com> - 0.1.0-1
 - Initial package release for v0.1.0.

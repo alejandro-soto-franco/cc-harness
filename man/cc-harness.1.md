@@ -1,4 +1,4 @@
-% CC-HARNESS(1) cc-harness 0.1.0 | User Commands
+% CC-HARNESS(1) cc-harness 0.1.1 | User Commands
 % Alejandro Soto Franco
 % 2026
 

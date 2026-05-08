@@ -1,7 +1,7 @@
 class CcHarness < Formula
   desc "Multi-session Claude Code launcher backed by tmux"
   homepage "https://github.com/alejandro-soto-franco/cc-harness"
-  url "https://github.com/alejandro-soto-franco/cc-harness/releases/download/v0.1.0/cc-harness-0.1.0.tar.gz"
+  url "https://github.com/alejandro-soto-franco/cc-harness/releases/download/v0.1.1/cc-harness-0.1.1.tar.gz"
   sha256 "REPLACE_WITH_RELEASE_SHA256"
   license "MIT"
 
