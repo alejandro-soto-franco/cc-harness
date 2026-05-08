@@ -133,6 +133,23 @@ _lib_parse() {
     printf "label=%s\npath=%s\nflags=%s\ntags=%s\n" "$label" "$path" "$flags" "$tags"
 }
 
+# Run _lib_parse on a config line and assign label/path/flags/tags as
+# the caller's local variables — without eval, so flag values can't be
+# interpreted as shell commands.
+_lib_assign() {
+    local line="$1" key value
+    label= path= flags= tags=
+    while IFS='=' read -r key value; do
+        case "$key" in
+            label) label="$value" ;;
+            path)  path="$value" ;;
+            flags) flags="$value" ;;
+            tags)  tags="$value" ;;
+        esac
+    done < <(_lib_parse "$line" 2>/dev/null)
+    [[ -n "$label" ]]
+}
+
 _lib_validate_label() {
     local label="$1"
     [[ -z "$label" ]] && { echo "cc-harness: label cannot be empty" >&2; return 3; }
@@ -305,10 +322,10 @@ _cmd_new() {
         label="$(printf "%s" "${pick%%=*}" | tr -d '[:space:]')"
     fi
 
-    local line label_dummy path flags tags
+    local line path flags tags
     line="$(_lookup_project "$label")" \
         || _die "$EXIT_CONFIG" new "no such project: $label"
-    eval "$(_lib_parse "$line")"
+    _lib_assign "$line" || _die "$EXIT_CONFIG" new "could not parse: $line"
 
     local exists=0
     _tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
@@ -352,26 +369,68 @@ _cmd_new() {
 _lookup_project() {
     local want="$1" line label path flags tags
     while IFS= read -r line; do
-        eval "$(_lib_parse "$line" 2>/dev/null)" || continue
+        _lib_assign "$line" || continue
         [[ "$label" == "$want" ]] && { printf "%s\n" "$line"; return 0; }
     done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
     return 1
 }
 
 _cmd_kill() {
+    local all=0 tag="" dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all)      all=1; shift ;;
+            --tag)      tag="${2:-}"; shift 2 ;;
+            --dry-run)  dry=1; shift ;;
+            -*) _die "$EXIT_USAGE" kill "unknown flag: $1" ;;
+            *)  _die "$EXIT_USAGE" kill "unexpected arg: $1" ;;
+        esac
+    done
+
     local windows pick
     windows="$(_tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null | grep -vx menu || true)"
     if [[ -z "$windows" ]]; then
         printf "(no sessions to kill)\n" >&2
-        sleep 1
-        return
+        return 0
+    fi
+    if [[ -n "$tag" ]]; then
+        windows="$(_filter_windows_by_tag "$windows" "$tag")"
+        [[ -z "$windows" ]] && {
+            printf "(no sessions match tag #%s)\n" "$tag" >&2
+            return 0
+        }
+    fi
+    if (( all )); then
+        while IFS= read -r w; do
+            (( dry )) && { printf "would kill: %s\n" "$w"; continue; }
+            _tmux kill-window -t "$CCH_SESSION:$w"
+        done <<< "$windows"
+        return 0
     fi
     pick="$(printf "%s\n" "$windows" | _pick 'kill>')" || return 0
     [[ -z "${pick:-}" ]] && return 0
-    printf "kill window '%s'? [y/N] " "$pick" >&2
-    local ans; read -r ans </dev/tty
-    [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
+    if (( dry )); then printf "would kill: %s\n" "$pick"; return 0; fi
+    if [[ -t 0 ]]; then
+        printf "kill window '%s'? [y/N] " "$pick" >&2
+        local ans; read -r ans </dev/tty
+        [[ "$ans" == "y" || "$ans" == "Y" ]] || return 0
+    fi
     _tmux kill-window -t "$CCH_SESSION:$pick"
+}
+
+_filter_windows_by_tag() {
+    local windows="$1" want_tag="$2" out="" line label path flags tags w t base
+    while IFS= read -r line; do
+        _lib_assign "$line" || continue
+        for w in $windows; do
+            base="${w%-[0-9]*}"
+            [[ "$base" == "$label" ]] || continue
+            for t in $tags; do
+                [[ "${t,,}" == "${want_tag,,}" ]] && out+="$w"$'\n'
+            done
+        done
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF")
+    printf "%s" "${out%$'\n'}"
 }
 
 _cmd_menu() {
