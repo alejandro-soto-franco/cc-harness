@@ -12,6 +12,8 @@ set -euo pipefail
 # Allow tests to inject a tmux socket via TMUX_FLAGS (e.g. "-L cch-test-42").
 # Wrapping tmux in a function means every call in this script is socket-aware
 # without changing individual call sites.
+# TMUX_FLAGS intentionally word-splits into separate flag tokens (e.g. "-L sock")
+# shellcheck disable=SC2086
 tmux() { command tmux ${TMUX_FLAGS:-} "$@"; }
 
 readonly CCH_VERSION="0.1.0"
@@ -22,7 +24,6 @@ CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
 CCH_CLAUDE="${CCH_CLAUDE:-claude}"
 CCH_SELF="$(readlink -f "$0")"
 
-readonly EXIT_OK=0
 readonly EXIT_GENERIC=1
 readonly EXIT_USAGE=2
 readonly EXIT_CONFIG=3
@@ -106,7 +107,7 @@ _lib_parse() {
     tags=""
     while [[ "$rest" =~ [[:space:]]\#([a-zA-Z0-9_-]+)[[:space:]]*$ ]]; do
         tags="${BASH_REMATCH[1]} $tags"
-        rest="${rest% \#${BASH_REMATCH[1]}*}"
+        rest="${rest% \#"${BASH_REMATCH[1]}"*}"
         rest="${rest%"${rest##*[![:space:]]}"}"
     done
     tags="${tags% }"
@@ -205,6 +206,8 @@ _lib_preflight_tmux() {
 
 _lib_parse_global_flags() {
     while [[ $# -gt 0 ]]; do
+        # CCH_QUIET and NO_COLOR are accepted for future use and child-process inheritance
+        # shellcheck disable=SC2034
         case "$1" in
             -v|--verbose) CCH_VERBOSE=1; shift ;;
             -q|--quiet)   CCH_QUIET=1; shift ;;
@@ -826,6 +829,8 @@ _cmd_doctor() {
     }
     printf "cc-harness doctor:\n"
     _check "tmux installed"             "command -v tmux"
+    # Single quotes intentional: string is passed to eval inside _check, must not expand here
+    # shellcheck disable=SC2016
     _check "tmux >= 3.0"                'command tmux -V | awk "{print \$2}" | tr -d "[:alpha:]" | awk "{exit !(\$1+0 >= 3.0)}"'
     _check "claude binary on PATH"      "command -v $CCH_CLAUDE"
     _check "projects.conf parseable"    "[[ -f $CCH_CONF ]] && grep -vE '^[[:space:]]*(#|\$)' $CCH_CONF >/dev/null"
