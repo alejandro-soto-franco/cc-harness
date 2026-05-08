@@ -1,0 +1,32 @@
+# Maintainer: Alejandro Soto Franco <sotofranco.eng@gmail.com>
+pkgname=cc-harness
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Multi-session Claude Code launcher backed by tmux'
+arch=('any')
+url='https://github.com/alejandro-soto-franco/cc-harness'
+license=('MIT')
+depends=('bash' 'tmux')
+optdepends=('fzf: nicer interactive picker')
+makedepends=('pandoc' 'make')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.gz"
+        "${pkgname}-${pkgver}.tar.gz.sha256::${url}/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.gz.sha256")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+    cd "${pkgname}-${pkgver}"
+    make completions
+    make man
+}
+
+package() {
+    cd "${pkgname}-${pkgver}"
+    make install \
+        DESTDIR="${pkgdir}" \
+        PREFIX=/usr \
+        BASH_COMPLETION_DIR=/usr/share/bash-completion/completions \
+        ZSH_COMPLETION_DIR=/usr/share/zsh/site-functions \
+        FISH_COMPLETION_DIR=/usr/share/fish/vendor_completions.d
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
