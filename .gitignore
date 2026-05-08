@@ -1,0 +1,21 @@
+# User data, not source. The repo ships projects.conf.example instead.
+projects.conf
+
+# Build artifacts
+docs/cc-harness.1
+dist/
+*.deb
+*.rpm
+*.tar.gz
+*.tar.gz.sha256
+SHA256SUMS
+
+# Logs / state if anyone runs from a checkout
+*.log
+
+# Editor crud
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
