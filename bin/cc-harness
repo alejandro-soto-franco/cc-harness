@@ -220,19 +220,36 @@ _lib_log() {
     printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$CCH_LOG"
 }
 
-# flock-based mutex around config-mutating ops.
+# Portable mutex around config-mutating ops. mkdir is atomic on POSIX
+# filesystems, so we use the lockfile path as a directory: whoever
+# creates it first wins. Stale locks (older than 60s) are reaped on
+# acquisition; this matches what flock would do if a holder died.
 _lib_with_lock() {
     # _lib_with_lock <subcmd> <function-to-run> [args...]
     local subcmd="$1" fn="$2"
     shift 2
-    mkdir -p "$(dirname "$CCH_LOCK")"
-    exec 9>"$CCH_LOCK" || _die "$EXIT_GENERIC" "$subcmd" "could not open lockfile $CCH_LOCK"
-    if ! flock -n 9; then
-        _die "$EXIT_GENERIC" "$subcmd" "another cc-harness is mutating config (lock held)"
-    fi
+    local lock_dir="$CCH_LOCK.d"
+    mkdir -p "$(dirname "$lock_dir")"
+    local tries=0
+    while ! mkdir "$lock_dir" 2>/dev/null; do
+        # Reap a stale lock (>60s old) so a crashed peer doesn't block forever.
+        local age
+        age=$(($(date +%s) - $(stat -c %Y "$lock_dir" 2>/dev/null || stat -f %m "$lock_dir" 2>/dev/null || echo 0)))
+        if ((age > 60)); then
+            rm -rf "$lock_dir"
+            continue
+        fi
+        if ((tries >= 50)); then
+            _die "$EXIT_GENERIC" "$subcmd" "another cc-harness is mutating config (lock held)"
+        fi
+        tries=$((tries + 1))
+        sleep 0.1
+    done
+    trap 'rm -rf "$lock_dir"' EXIT
     "$fn" "$@"
     local rc=$?
-    exec 9>&-
+    rm -rf "$lock_dir"
+    trap - EXIT
     return "$rc"
 }
 
