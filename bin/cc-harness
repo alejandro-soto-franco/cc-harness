@@ -156,6 +156,60 @@ _lib_validate_path() {
 
 _have() { command -v "$1" >/dev/null 2>&1; }
 
+_lib_log() {
+    [[ "${CCH_VERBOSE:-0}" -eq 1 ]] || return 0
+    mkdir -p "$CCH_STATE_DIR"
+    if [[ -f "$CCH_LOG" ]] && (( $(stat -c%s "$CCH_LOG" 2>/dev/null || stat -f%z "$CCH_LOG") > 1048576 )); then
+        for i in 2 1; do
+            [[ -f "$CCH_LOG.$i" ]] && mv "$CCH_LOG.$i" "$CCH_LOG.$((i+1))"
+        done
+        mv "$CCH_LOG" "$CCH_LOG.1"
+    fi
+    printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$CCH_LOG"
+}
+
+_lib_with_lock() {
+    # _lib_with_lock <subcmd> <function-to-run> [args...]
+    local subcmd="$1" fn="$2"; shift 2
+    mkdir -p "$(dirname "$CCH_LOCK")"
+    exec 9>"$CCH_LOCK" || _die "$EXIT_GENERIC" "$subcmd" "could not open lockfile $CCH_LOCK"
+    if ! flock -n 9; then
+        _die "$EXIT_GENERIC" "$subcmd" "another cc-harness is mutating config (lock held)"
+    fi
+    "$fn" "$@"
+    local rc=$?
+    exec 9>&-
+    return "$rc"
+}
+
+_lib_preflight_claude() {
+    if ! command -v "$CCH_CLAUDE" >/dev/null 2>&1; then
+        _die "$EXIT_DEPS" preflight \
+            "claude binary not found on PATH (or via \$CCH_CLAUDE=$CCH_CLAUDE)"
+    fi
+}
+
+_lib_preflight_tmux() {
+    command -v tmux >/dev/null 2>&1 \
+        || _die "$EXIT_DEPS" preflight "tmux not installed"
+    local v
+    v="$(command tmux -V | awk '{print $2}' | tr -d '[:alpha:]')"
+    awk -v v="$v" 'BEGIN{ exit !(v+0 >= 3.0) }' \
+        || _die "$EXIT_DEPS" preflight "requires tmux >= 3.0 (found $v)"
+}
+
+_lib_parse_global_flags() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose) CCH_VERBOSE=1; shift ;;
+            -q|--quiet)   CCH_QUIET=1; shift ;;
+            --no-color)   NO_COLOR=1; shift ;;
+            *) break ;;
+        esac
+    done
+    CCH_REMAINING_ARGS=("$@")
+}
+
 _seed_conf() {
     mkdir -p "$(dirname "$CCH_CONF")"
     cat > "$CCH_CONF" <<'EOF'
@@ -351,6 +405,12 @@ Inside the harness (Ctrl-b is the tmux prefix):
 EOF
 }
 
+_lib_parse_global_flags "$@"
+if (( ${#CCH_REMAINING_ARGS[@]} > 0 )); then
+    set -- "${CCH_REMAINING_ARGS[@]}"
+else
+    set --
+fi
 _lib_paths
 _lib_migrate
 case "${1:-attach}" in
@@ -366,6 +426,8 @@ case "${1:-attach}" in
     _validate-label)  shift; _lib_validate_label "$1" ;;
     _validate-tag)    shift; _lib_validate_tag "$1" ;;
     _validate-path)   shift; _lib_validate_path "$1" ;;
+    _preflight-claude) _lib_preflight_claude ;;
+    _preflight-tmux)   _lib_preflight_tmux ;;
     _debug-paths)
         printf "config=%s\nstate=%s\nlock=%s\n" \
             "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK"
