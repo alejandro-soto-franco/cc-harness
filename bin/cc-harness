@@ -452,6 +452,49 @@ _cmd_list() {
     done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
 }
 
+_cmd_add() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help add 2>/dev/null || _help; return 0; }
+    local label="" path="" flags="" dry=0
+    local -a tags=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --flags)    flags="$2"; shift 2 ;;
+            --tag)      tags+=("$2"); shift 2 ;;
+            --dry-run)  dry=1; shift ;;
+            -*)         _die "$EXIT_USAGE" add "unknown flag: $1" ;;
+            *)
+                if [[ -z "$label" ]]; then label="$1"
+                elif [[ -z "$path" ]]; then path="$1"
+                else _die "$EXIT_USAGE" add "too many args: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    [[ -n "$label" && -n "$path" ]] \
+        || _die "$EXIT_USAGE" add "usage: add <label> <path> [--flags '...'] [--tag t]"
+    _lib_validate_label "$label" || exit "$EXIT_CONFIG"
+    _lib_validate_path "$path"   || exit "$EXIT_CONFIG"
+    for t in "${tags[@]}"; do
+        _lib_validate_tag "$t" || exit "$EXIT_CONFIG"
+    done
+
+    _lookup_project "$label" >/dev/null 2>&1 \
+        && _die "$EXIT_CONFIG" add "label already exists: $label"
+
+    local line="$label = $path"
+    [[ -n "$flags" ]] && line+=" | $flags"
+    for t in "${tags[@]}"; do line+=" #$t"; done
+
+    if (( dry )); then printf "would append: %s\n" "$line"; return 0; fi
+
+    _lib_with_lock add _cmd_add_write "$line"
+}
+_cmd_add_write() {
+    [[ -f "$CCH_CONF" ]] || { mkdir -p "$(dirname "$CCH_CONF")"; touch "$CCH_CONF"; }
+    printf "%s\n" "$1" >> "$CCH_CONF"
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -577,6 +620,7 @@ _lib_migrate
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
     list)         shift; _cmd_list "$@" ;;
+    add)          shift; _cmd_add "$@" ;;
     menu)         _cmd_menu ;;
     new)          shift; _cmd_new "$@" ;;
     kill)         shift; _cmd_kill "$@" ;;
