@@ -14,17 +14,39 @@ set -euo pipefail
 # without changing individual call sites.
 tmux() { command tmux ${TMUX_FLAGS:-} "$@"; }
 
-CCH_HOME="${CCH_HOME:-$HOME/cc-harness}"
-CCH_CONF="$CCH_HOME/projects.conf"
+CCH_HOME="${CCH_HOME:-}"
 CCH_SESSION="${CCH_SESSION:-cc-harness}"
 CCH_FLAGS="${CCH_FLAGS:---dangerously-skip-permissions}"
 CCH_CLAUDE="${CCH_CLAUDE:-claude}"
 CCH_SELF="$(readlink -f "$0")"
 
+_lib_paths() {
+    local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
+    local xdg_state="${XDG_STATE_HOME:-$HOME/.local/state}"
+    local legacy_dir="$HOME/cc-harness"
+
+    if [[ -n "${CCH_HOME:-}" ]]; then
+        CCH_CONF="$CCH_HOME/projects.conf"
+        CCH_STATE_DIR="$CCH_HOME"
+    elif [[ -f "$xdg_config/cc-harness/projects.conf" ]]; then
+        CCH_CONF="$xdg_config/cc-harness/projects.conf"
+        CCH_STATE_DIR="$xdg_state/cc-harness"
+    elif [[ -f "$legacy_dir/projects.conf" ]]; then
+        CCH_CONF="$legacy_dir/projects.conf"
+        CCH_STATE_DIR="$legacy_dir"
+    else
+        CCH_CONF="$xdg_config/cc-harness/projects.conf"
+        CCH_STATE_DIR="$xdg_state/cc-harness"
+    fi
+    CCH_LOCK="${XDG_RUNTIME_DIR:-/tmp}/cc-harness-$UID.lock"
+    CCH_LOG="$CCH_STATE_DIR/cc-harness.log"
+    CCH_MIGRATED_MARKER="$CCH_STATE_DIR/.migrated-from-legacy"
+}
+
 _have() { command -v "$1" >/dev/null 2>&1; }
 
 _seed_conf() {
-    mkdir -p "$CCH_HOME"
+    mkdir -p "$(dirname "$CCH_CONF")"
     cat > "$CCH_CONF" <<'EOF'
 # cc-harness projects — one per line, "label = path"
 # Lines starting with # are comments. ~ expands to $HOME.
@@ -220,12 +242,17 @@ Inside the harness (Ctrl-b is the tmux prefix):
 EOF
 }
 
+_lib_paths
 case "${1:-attach}" in
     attach|"")    _cmd_attach ;;
     menu)         _cmd_menu ;;
     new)          _cmd_new ;;
     kill)         _cmd_kill ;;
     -h|--help)    _help ;;
+    _debug-paths)
+        printf "config=%s\nstate=%s\nlock=%s\n" \
+            "$CCH_CONF" "$CCH_STATE_DIR" "$CCH_LOCK"
+        ;;
     *)
         printf "cc-harness: unknown command: %s\n" "$1" >&2
         _help >&2
