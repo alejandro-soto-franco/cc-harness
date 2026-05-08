@@ -691,6 +691,16 @@ _cmd_status() {
     done <<< "$windows"
 }
 
+_cmd_logs() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help logs 2>/dev/null || _help; return 0; }
+    local label="${1:-}"
+    [[ -n "$label" ]] || _die "$EXIT_USAGE" logs "usage: logs <label>"
+    tmux list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
+        | grep -qx -- "$label" \
+        || _die "$EXIT_TMUX" logs "no window named $label"
+    tmux capture-pane -t "$CCH_SESSION:$label" -p -S -3000
+}
+
 _cmd_doctor() {
     [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help doctor 2>/dev/null || _help; return 0; }
     local fail=0
@@ -856,6 +866,7 @@ case "${1:-attach}" in
     remove)       shift; _cmd_remove "$@" ;;
     rename)       shift; _cmd_rename "$@" ;;
     status)       shift; _cmd_status "$@" ;;
+    logs)         shift; _cmd_logs "$@" ;;
     doctor)       shift; _cmd_doctor "$@" ;;
     tag)          shift; _cmd_tag "$@" ;;
     untag)        shift; _cmd_untag "$@" ;;
