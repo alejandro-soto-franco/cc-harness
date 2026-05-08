@@ -50,7 +50,7 @@ wait_for_window() {
     local name="$1" timeout="${2:-3}" elapsed=0
     while ! tmux $TMUX_TEST_FLAGS list-windows -t "$CCH_SESSION" -F '#W' 2>/dev/null \
         | grep -qx -- "$name"; do
-        (( elapsed >= timeout * 10 )) && return 1
+        ((elapsed >= timeout * 10)) && return 1
         sleep 0.1
         elapsed=$((elapsed + 1))
     done
