@@ -691,6 +691,42 @@ _cmd_status() {
     done <<< "$windows"
 }
 
+_cmd_doctor() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { _help doctor 2>/dev/null || _help; return 0; }
+    local fail=0
+    _check() {
+        local name="$1" cmd="$2"
+        if eval "$cmd" >/dev/null 2>&1; then
+            printf "  PASS  %s\n" "$name"
+        else
+            printf "  FAIL  %s\n" "$name"
+            fail=$(( fail + 1 ))
+        fi
+    }
+    printf "cc-harness doctor:\n"
+    _check "tmux installed"             "command -v tmux"
+    _check "tmux >= 3.0"                'command tmux -V | awk "{print \$2}" | tr -d "[:alpha:]" | awk "{exit !(\$1+0 >= 3.0)}"'
+    _check "claude binary on PATH"      "command -v $CCH_CLAUDE"
+    _check "projects.conf parseable"    "[[ -f $CCH_CONF ]] && grep -vE '^[[:space:]]*(#|\$)' $CCH_CONF >/dev/null"
+    _check "every project path exists"  "_doctor_paths"
+    _check "TERM supports 256color"     "[[ \"\${TERM:-}\" == *256* ]] || (command -v tput >/dev/null && tput colors 2>/dev/null | awk '{exit !(\$1>=256)}')"
+    _check "fzf available (optional)"   "command -v fzf"
+    if [[ -d "$HOME/cc-harness" && "$CCH_CONF" != "$HOME/cc-harness/projects.conf" ]]; then
+        printf "  WARN  legacy ~/cc-harness/ still present (safe to remove now)\n"
+    fi
+    return "$fail"
+}
+_doctor_paths() {
+    local cc_label cc_path cc_flags cc_tags
+    while IFS= read -r line; do
+        cc_label="" cc_path="" cc_flags="" cc_tags=""
+        eval "$(CCH_PARSE_PREFIX=cc_ _lib_parse "$line" 2>/dev/null)" || continue
+        local p; p="$(_lib_resolve_path "$cc_path")"
+        [[ -d "$p" ]] || return 1
+    done < <(grep -vE '^\s*(#|$)' "$CCH_CONF" 2>/dev/null)
+    return 0
+}
+
 _cmd_menu() {
     while true; do
         clear
@@ -820,6 +856,7 @@ case "${1:-attach}" in
     remove)       shift; _cmd_remove "$@" ;;
     rename)       shift; _cmd_rename "$@" ;;
     status)       shift; _cmd_status "$@" ;;
+    doctor)       shift; _cmd_doctor "$@" ;;
     tag)          shift; _cmd_tag "$@" ;;
     untag)        shift; _cmd_untag "$@" ;;
     menu)         _cmd_menu ;;
