@@ -14,7 +14,7 @@ jobs:
     name: Lint (shellcheck + shfmt)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -49,7 +49,7 @@ jobs:
             bash: brew     # bash 5.x
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
