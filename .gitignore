@@ -3,7 +3,6 @@ projects.conf
 
 # Internal design docs / agent scratch — not part of the public source tree.
 docs/
-docs/superpowers/
 
 # Build artifacts
 dist/
