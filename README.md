@@ -4,12 +4,12 @@ Multi-session Claude Code launcher backed by tmux.
 
 `cc-harness` is a single-file bash CLI that runs many Claude Code sessions
 in parallel inside one tmux session, with one named window per project. A
-persistent menu window at index 0 acts as the control loop: you pick a
+persistent menu window at index 0 is the control loop: you pick a
 project to spawn, switch to, kill, or edit. tmux keeps everything alive
-across SSH disconnects, terminal crashes, and lid closes, so a forgotten
+across SSH disconnects, terminal crashes, and lid closes. A forgotten
 claude session is exactly where you left it on the next attach.
 
-## Why this exists
+## Purpose
 
 Running half a dozen Claude Code sessions in plain terminals means burned
 windows, lost scrollback, and "wait, was that the polybius shell or the
@@ -20,7 +20,7 @@ self-healing menu, and `[dead]` flagging when a claude crashes so the
 window does not silently disappear.
 
 It is intentionally small: one bash file, one tmux dependency, one
-optional `fzf` for nicer pickers. No daemon, no telemetry, no auto-update.
+optional `fzf` for nicer pickers. It has no daemon, telemetry or auto-update.
 
 ## Install
 
@@ -52,7 +52,7 @@ Uninstall (delegates to `cc-harness uninstall` when present):
 curl -fsSL https://raw.githubusercontent.com/alejandro-soto-franco/cc-harness/main/install.sh | bash -s -- --uninstall
 ```
 
-### Homebrew (macOS, Linuxbrew)
+### Installing with Homebrew on macOS or Linuxbrew
 
 A formula lives in `packaging/homebrew/cc-harness.rb` and is mirrored to a
 separate tap repo:
@@ -154,7 +154,7 @@ the same directory.
 
 ## Tags and filters
 
-Tagging is the workhorse for navigating a many-project setup.
+Tagging organises a setup with many projects.
 
 ```bash
 cc-harness list --tag math          # show only #math projects
@@ -172,35 +172,35 @@ cc-harness untag polybius                      # strip all tags
 ```
 
 Discovery via shell completion: when `--tag <TAB>` is requested, the
-completion script reads `cc-harness list --tags` and offers the live tag
+completion script reads `cc-harness list --tags` and completes from the live tag
 set.
 
 ## Multi-instance per project
 
 By default, `cc-harness new <label>` switches to the existing window when
 one is open and spawns a new one when it is not. Two flags override that
-behavior:
+behaviour:
 
-| Invocation | Behavior |
+| Invocation | Behaviour |
 |------------|----------|
 | `cc-harness new <label>` | Spawn or switch (script-safe default). |
-| `cc-harness new <label> --fresh` | Always spawn a sibling: `<label>-2`, then `<label>-3`, and so on. |
+| `cc-harness new <label> --fresh` | Always spawn a sibling: `<label>-2`, then `<label>-3`, and further siblings in sequence. |
 | `cc-harness new <label> --switch` | Only switch. Errors with exit 4 if no window exists. |
 | `cc-harness new` (no label) | Interactive picker; on collision, prompts `[s]witch / [f]resh / [c]ancel`. |
 
 Sibling windows show up under their base label in `list`, `status`, and
-`kill`, so tagging the parent project automatically applies to siblings.
+`kill`. Tagging the parent project therefore applies to siblings automatically.
 
 ## Independent per-terminal views
 
-Plain tmux gives every connected client the same active-window pointer,
-so opening two terminals into the harness shows the same claude in both.
+Plain tmux gives every connected client the same active-window pointer.
+Opening two terminals into the harness shows the same claude in both.
 That is wrong for the common case of pinning one terminal to a single
 project and using another terminal as your "scratch" view.
 
 `cc-harness attach <label>` solves this with a grouped tmux session.
-The grouped session shares the underlying window set, so any spawn made
-in either view is visible to the other, but each view has its own current
+The grouped session shares the underlying window set. Any spawn made
+in either view is visible to the other, and each view has its own current
 window. Two examples:
 
 Terminal A:
@@ -218,35 +218,35 @@ cc-harness attach pmp
 Both stay on their respective projects regardless of what the other does.
 Spawning a new project from either is visible to both.
 
-## Robustness
+## Resilience
 
 A few small things make the harness less brittle than a hand-rolled tmux
 session:
 
-- **Menu auto-respawn.** Window 0 named `menu` is the control loop. If
+- Menu auto-respawn. Window 0 named `menu` is the control loop. If
   somebody (or something) closes that window with `Ctrl-b &`, the next
   attach recreates it.
-- **`prefix + 0` rebind.** The chord is rebound at session bootstrap so
-  it spawns the menu when missing instead of failing with "no such
+- `prefix + 0` rebind. The chord is rebound at session bootstrap so
+  it spawns the menu when missing. Plain tmux fails there with "no such
   window".
-- **`prefix + N` picker.** From any window, `Ctrl-b N` (capital) opens
+- `prefix + N` picker. From any window, `Ctrl-b N` (capital) opens
   the project picker without going back to the menu first.
-- **Stale-window detection.** When a claude crashes, tmux keeps the pane
+- Stale-window detection. When a claude crashes, tmux keeps the pane
   open (we set `remain-on-exit on` so users can read the traceback). The
   next attach scans for windows whose pane PID is dead and renames them
   `[dead] <label>`.
-- **Preflight.** Before spawning, `cc-harness` checks that the claude
+- Preflight. Before spawning, `cc-harness` checks that the claude
   binary is on PATH and that tmux is at least 3.0. Missing dependencies
   fail fast with exit 5 and a clear message.
-- **Lockfile.** All config-mutating subcommands (`add`, `remove`,
-  `rename`, `tag`, `untag`) hold a `flock` on
+- Lockfile. All config-mutating subcommands (`add`, `remove`,
+  `rename`, `tag`, `untag`) take a `flock` on
   `$XDG_RUNTIME_DIR/cc-harness-$UID.lock` so concurrent invocations cannot
   corrupt `projects.conf`.
-- **Verbose log.** Pass `-v` to write a rotating log to
+- Verbose log. Pass `-v` to write a rotating log to
   `$XDG_STATE_HOME/cc-harness/cc-harness.log` (1 MiB rotation, 3
   generations).
-- **`Ctrl-C` in the menu loop.** SIGINT is trapped so a stray Ctrl-C
-  inside the picker redraws the menu instead of dropping you to a broken
+- `Ctrl-C` in the menu loop. SIGINT is trapped so a stray Ctrl-C
+  inside the picker redraws the menu and does not drop you to a broken
   shell.
 
 ## Subcommands
@@ -298,7 +298,7 @@ configured in `~/.tmux.conf` (default `Ctrl-b`).
 | `CCH_CLAUDE` | Path to the claude binary. | `claude` (on PATH) |
 | `CCH_SESSION` | tmux session name. | `cc-harness` |
 | `CCH_VERBOSE`, `CCH_QUIET` | Equivalent to passing `-v` or `-q`. | `0` |
-| `NO_COLOR` | Disable ANSI color output (de facto standard). | unset |
+| `NO_COLOR` | Disable ANSI colour output (de facto standard). | unset |
 | `TMUX_FLAGS` | Prepended to every internal tmux invocation; used by the test suite to target an isolated server (`-L SOCKET`). | empty |
 
 ## Exit codes
@@ -332,22 +332,22 @@ cc-harness doctor:
 
 Common situations:
 
-- **`claude binary not found on PATH`**: install Claude Code, or set
+- `claude binary not found on PATH`: install Claude Code, or set
   `CCH_CLAUDE=/path/to/claude`.
-- **`requires tmux >= 3.0 (found 2.x)`**: upgrade tmux. RHEL 7 / Debian
+- `requires tmux >= 3.0 (found 2.x)`: upgrade tmux. RHEL 7 / Debian
   10 ship 2.x; brew or copr packages have current builds.
-- **menu window keeps dying**: that was the v0 bug. Update to v0.1.0+.
-- **two terminals fight over the same window**: use
-  `cc-harness attach <label>` for an independent client view instead of
-  bare `cc-harness`.
+- menu window keeps dying: that was the v0 bug. Update to v0.1.0+.
+- two terminals fight over the same window: use
+  `cc-harness attach <label>` for an independent client view. Bare
+  `cc-harness` shares the active window.
 
 ## Bash 3.2 portability
 
 The script targets bash 3.2+ because macOS still ships 3.2 by default.
-That means: no associative arrays, no `mapfile`, no `${var,,}`, no
-`[[ -v var ]]`, no `wait -n`, no `coproc`. CI runs the test suite on
+The script therefore avoids associative arrays, `mapfile`, `${var,,}`,
+`[[ -v var ]]`, `wait -n` and `coproc`. CI runs the test suite on
 ubuntu-latest with system bash 5.x, on macos-latest with system bash
-3.2, and on macos-latest with brew-installed bash 5.x, so portability
+3.2, and on macos-latest with brew-installed bash 5.x. Portability
 regressions surface immediately.
 
 ## Contributing
@@ -368,8 +368,8 @@ make fmt-check     # shfmt diff
 
 ## Security
 
-If you find a security issue, please email the maintainer rather than
-filing a public issue. Details in [SECURITY.md](SECURITY.md). The
+If you find a security issue, please email the maintainer.
+Do not file a public issue. Details in [SECURITY.md](SECURITY.md). The
 `install.sh` curl-bash flow is the most security-relevant surface; it
 verifies SHA-256 on the downloaded tarball before extraction.
 
